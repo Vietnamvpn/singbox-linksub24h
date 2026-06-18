@@ -899,7 +899,7 @@ main_menu() {
                     echo -e "${RED} Lỗi: Không tìm thấy người dùng [$target_del] trong hệ thống Database!${NC}"
                     sleep 3
                 else
-                    read -p " Nhập Cổng (Port) (Để TRỐNG nếu muốn xóa User này khỏi TẤT CẢ các Node): " port </dev/tty
+                    read -p " Nhập Cổng muốn xóa, để trống sẽ xóa tất cả: " port </dev/tty
                     
                     set +e 
                     

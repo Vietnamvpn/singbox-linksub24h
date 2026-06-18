@@ -632,11 +632,30 @@ issue_cloudflare_cert() {
     echo -e "${BLUE}       XIN CHỨNG CHỈ SSL CLOUDFLARE      ${NC}"
     echo -e "${BLUE}=========================================${NC}"
     echo -e "Yêu cầu: Domain đã trỏ về VPS và bạn có tài khoản Cloudflare."
+    echo -e " ${YELLOW}(Bạn có thể nhập 0 hoặc n để hủy bỏ và quay lại Menu)${NC}"
+    echo -e "----------------------------------------"
+    
     read -p " Nhập Domain cần cấp SSL (Ví dụ: sub.domain.com): " cf_domain </dev/tty
-    if [ -z "$cf_domain" ]; then return; fi
+    if [ -z "$cf_domain" ] || [ "$cf_domain" == "0" ] || [ "$cf_domain" == "n" ] || [ "$cf_domain" == "N" ]; then
+        echo -e "${YELLOW} Đã hủy thao tác xin chứng chỉ SSL.${NC}"
+        sleep 2
+        return
+    fi
     
     read -p " Nhập Email tài khoản Cloudflare của bạn: " cf_email </dev/tty
+    if [ "$cf_email" == "0" ] || [ "$cf_email" == "n" ] || [ "$cf_email" == "N" ]; then
+        echo -e "${YELLOW} Đã hủy thao tác xin chứng chỉ SSL.${NC}"
+        sleep 2
+        return
+    fi
+    
     read -p " Nhập Global API Key của Cloudflare: " cf_key </dev/tty
+    if [ "$cf_key" == "0" ] || [ "$cf_key" == "n" ] || [ "$cf_key" == "N" ]; then
+        echo -e "${YELLOW} Đã hủy thao tác xin chứng chỉ SSL.${NC}"
+        sleep 2
+        return
+    fi
+    
     if [ -z "$cf_email" ] || [ -z "$cf_key" ]; then
         echo -e "${RED} Lỗi: Email và Global API Key không được để trống!${NC}"
         sleep 3

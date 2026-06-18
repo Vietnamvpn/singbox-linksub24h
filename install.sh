@@ -154,36 +154,74 @@ WantedBy=multi-user.target
 EOF
     systemctl daemon-reload && systemctl enable sing-box &>/dev/null
 
-    echo -e "${YELLOW}--> Đang khởi tạo dịch vụ Log Webhook (Chế độ chờ)...${NC}"
-    # Tạo file script forward log tối ưu (chỉ lấy log khi có link)
+    echo -e "${YELLOW}--> Đang khởi tạo dịch vụ Log Webhook (Chế độ Gom nhóm định kỳ)...${NC}"
+    # Tạo file script forward log tối ưu gom cụm theo phút
     cat << 'EOF' > /usr/local/bin/log-forwarder.sh
 #!/bin/bash
 CONF_FILE="/usr/local/etc/sing-box/php_url.conf"
+TEMP_LOG="/tmp/singbox_pending.log"
 
-# Đọc URL từ file. Nếu không có file hoặc file rỗng thì ngủ đông (idling)
-if [ ! -f "$CONF_FILE" ] || [ -z "$(cat "$CONF_FILE")" ]; then
-    tail -f /dev/null
-    exit 0
-fi
+# Khởi tạo file tạm
+touch "$TEMP_LOG"
 
-PHP_URL=$(cat "$CONF_FILE")
+# --- TIẾN TRÌNH 1: LẮNG NGHE VÀ HỨNG LOG VÀO FILE TẠM ---
+# Chạy tiến trình này dưới dạng ngầm (background)
+journalctl -u sing-box -f -n 0 | while read -r line; do
+    # Nếu chưa cấu hình URL thì bỏ qua không ghi log để tránh đầy ổ cứng
+    if [ ! -f "$CONF_FILE" ] || [ -z "$(cat "$CONF_FILE")" ]; then
+        > "$TEMP_LOG" # Luôn làm trống file tạm nếu tắt tính năng
+        continue
+    fi
+    
+    # Lọc các log kết nối hợp lệ
+    if [[ "$line" =~ "inbound/" && ( "$line" =~ "opened" || "$line" =~ "closed" || "$line" =~ "rejected" ) ]]; then
+        echo "$line" >> "$TEMP_LOG"
+    fi
+done &
+PID_JOURNAL=$!
+
+# --- TIẾN TRÌNH 2: CỨ MỖI 60 GIÂY GOM LOG GỬI ĐI 1 LẦN ---
 VPS_IP=$(curl -s ifconfig.me || curl -s icanhazip.com)
 
-journalctl -u sing-box -f -n 0 | while read -r line; do
-    if [[ "$line" =~ "inbound/" && ( "$line" =~ "opened" || "$line" =~ "closed" || "$line" =~ "rejected" ) ]]; then
-        safe_log=$(echo "$line" | sed 's/"/\\"/g' | tr -d '\r\n')
+# Đảm bảo tắt tiến trình hứng log khi dịch vụ stop
+trap 'kill $PID_JOURNAL; exit 0' SIGTERM SIGINT
+
+while true; do
+    sleep 60 # Bạn có thể đổi thành 300 nếu muốn 5 phút gửi 1 lần
+    
+    # Kiểm tra cấu hình URL
+    if [ ! -f "$CONF_FILE" ] || [ -z "$(cat "$CONF_FILE")" ]; then
+        > "$TEMP_LOG"
+        continue
+    fi
+    
+    PHP_URL=$(cat "$CONF_FILE")
+    
+    # Nếu file tạm có dữ liệu (kích thước > 0)
+    if [ -s "$TEMP_LOG" ]; then
+        # Đổi tên file tạm thời để tránh xung đột dữ liệu khi đang ghi (Race Condition)
+        mv "$TEMP_LOG" "${TEMP_LOG}.sending"
+        touch "$TEMP_LOG"
+        
+        # Xử lý chuỗi dữ liệu: Xóa ký tự lạ, escape dấu nháy kép và chuyển dòng thành \n để đóng gói JSON hợp lệ
+        LOG_CONTENT=$(cat "${TEMP_LOG}.sending" | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}')
+        
+        # Gửi duy nhất 1 request HTTP POST chứa toàn bộ log của 1 phút qua
         curl -s -X POST "$PHP_URL" \
              -H "Content-Type: application/json" \
-             -d "{\"vps_ip\":\"$VPS_IP\", \"log\":\"$safe_log\"}" &
+             -d "{\"vps_ip\":\"$VPS_IP\", \"batch\": true, \"log\":\"$LOG_CONTENT\"}"
+             
+        # Xóa file tạm đang gửi sau khi hoàn thành
+        rm -f "${TEMP_LOG}.sending"
     fi
 done
 EOF
     chmod +x /usr/local/bin/log-forwarder.sh
 
-    # Tạo service systemd cho log-forwarder
+    # Tạo service systemd cho log-forwarder (Giữ nguyên như cũ)
     cat << 'EOF' > /etc/systemd/system/log-forwarder.service
 [Unit]
-Description=Sing-box Log Forwarder
+Description=Sing-box Log Forwarder (Batch Mode)
 After=sing-box.service
 
 [Service]

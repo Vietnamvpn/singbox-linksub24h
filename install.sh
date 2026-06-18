@@ -446,36 +446,75 @@ main_menu() {
             echo "======================================================="
             echo "          DANH SÁCH TOÀN BỘ LINK NODE CỦA BẠN          "
             echo "======================================================="
-            jq -c '.inbounds[]' $CONFIG_FILE | while read -r inbound; do
-                type=$(echo "$inbound" | jq -r '.type')
-                port=$(echo "$inbound" | jq -r '.listen_port')
-                user_count=$(echo "$inbound" | jq '.users | length')
-                sni=$(echo "$inbound" | jq -r '.tls.server_name // "bing.com"')
-                
-                # Gọi Domain từ Database thay vì IP cứng
-                dom=$(sqlite3 $DB_FILE "SELECT domain FROM users WHERE port=$port LIMIT 1;")
-                if [ -z "$dom" ]; then dom=$(get_ip); fi
-                
-                echo -e "\n CỔNG: $port [ Giao thức: ${type^^} ] | Kết nối: $dom"
+            
+            # 1. Lấy toàn bộ Tên (name) không trùng lặp
+            all_names=$(jq -r '[.inbounds[] | select(has("users")).users[] | select(has("name")) | .name] | unique | .[]' $CONFIG_FILE 2>/dev/null)
+            
+            # 2. Lấy toàn bộ UUID của TUIC để kiểm tra chéo
+            all_tuic_uuids=$(jq -r '[.inbounds[] | select(.type == "tuic").users[] | .uuid] | unique | .[]' $CONFIG_FILE 2>/dev/null)
+            printed_uuids=""
+            
+            # Xuất nhóm có Tên (Name)
+            for u_name in $all_names; do
+                echo -e "\n👤 NGƯỜI DÙNG: $u_name"
                 echo "-------------------------------------------------------"
-                for ((i=0; i<user_count; i++)); do
-                    user_obj=$(echo "$inbound" | jq ".users[$i]")
-                    if [ "$type" == "hysteria2" ]; then
-                        name=$(echo "$user_obj" | jq -r '.name')
-                        pass=$(echo "$user_obj" | jq -r '.password')
-                        echo " hysteria2://$pass@$dom:$port?insecure=1&sni=$sni#Hy2-$name-$port"
-                    elif [ "$type" == "tuic" ]; then
-                        uuid=$(echo "$user_obj" | jq -r '.uuid')
-                        pass=$(echo "$user_obj" | jq -r '.password')
-                        echo " tuic://$uuid:$pass@$dom:$port?congestion_control=bbr&udp_relay_mode=native&alpn=h3&sni=$sni&allow_insecure=1#TUIC-${uuid:0:8}-$port"
-                    elif [ "$type" == "vless" ]; then
-                        uuid=$(echo "$user_obj" | jq -r '.uuid')
-                        name=$(echo "$user_obj" | jq -r '.name')
-                        pub_k=$(sqlite3 $DB_FILE "SELECT user_key FROM users WHERE port=$port AND user_key LIKE '$name:%';" | cut -d':' -f3)
-                        echo " vless://$uuid@$dom:$port?security=reality&encryption=none&pbk=$pub_k&headerType=none&fp=chrome&spx=%2F&type=grpc&sni=$sni&serviceName=vless-grpc&sid=0123456789abcdef#VLESS-Reality-$name"
+                
+                # Trích xuất UUID tương ứng của user này từ Vless
+                u_uuid=$(jq -r "[.inbounds[] | select(.type == \"vless\" and has(\"users\")).users[] | select(.name == \"$u_name\") | .uuid] | .[0] // empty" $CONFIG_FILE 2>/dev/null)
+                if [ ! -z "$u_uuid" ]; then
+                    printed_uuids="$printed_uuids $u_uuid"
+                fi
+                
+                jq -c '.inbounds[] | select(has("users"))' $CONFIG_FILE | while read -r inbound; do
+                    type=$(echo "$inbound" | jq -r '.type')
+                    port=$(echo "$inbound" | jq -r '.listen_port')
+                    sni=$(echo "$inbound" | jq -r '.tls.server_name // "bing.com"')
+                    dom=$(sqlite3 $DB_FILE "SELECT domain FROM users WHERE port=$port LIMIT 1;")
+                    if [ -z "$dom" ]; then dom=$(get_ip); fi
+                    
+                    user_obj=""
+                    if [ "$type" == "hysteria2" ] || [ "$type" == "vless" ]; then
+                        user_obj=$(echo "$inbound" | jq -c ".users[] | select(.name == \"$u_name\")" 2>/dev/null)
+                    elif [ "$type" == "tuic" ] && [ ! -z "$u_uuid" ]; then
+                        user_obj=$(echo "$inbound" | jq -c ".users[] | select(.uuid == \"$u_uuid\")" 2>/dev/null)
+                    fi
+                    
+                    if [ ! -z "$user_obj" ]; then
+                        if [ "$type" == "hysteria2" ]; then
+                            pass=$(echo "$user_obj" | jq -r '.password')
+                            echo " - [Hysteria2] hysteria2://$pass@$dom:$port?insecure=1&sni=$sni#Hy2-$u_name"
+                        elif [ "$type" == "tuic" ]; then
+                            pass=$(echo "$user_obj" | jq -r '.password')
+                            echo " - [TUIC v5]   tuic://$u_uuid:$pass@$dom:$port?congestion_control=bbr&udp_relay_mode=native&alpn=h3&sni=$sni&allow_insecure=1#TUIC-${u_uuid:0:8}"
+                        elif [ "$type" == "vless" ]; then
+                            pub_k=$(sqlite3 $DB_FILE "SELECT user_key FROM users WHERE port=$port AND user_key LIKE '$u_name:%';" | cut -d':' -f3)
+                            echo " - [VLESS]     vless://$u_uuid@$dom:$port?security=reality&encryption=none&pbk=$pub_k&headerType=none&fp=chrome&spx=%2F&type=grpc&sni=$sni&serviceName=vless-grpc&sid=0123456789abcdef#VLESS-$u_name"
+                        fi
                     fi
                 done
             done
+            
+            # Xuất nhóm TUIC lẻ tẻ (Chỉ có UUID, không được tạo kèm Tên)
+            for t_uuid in $all_tuic_uuids; do
+                if [[ ! "$printed_uuids" == *"$t_uuid"* ]]; then
+                    echo -e "\n👤 NGƯỜI DÙNG (Độc lập UUID): $t_uuid"
+                    echo "-------------------------------------------------------"
+                    jq -c '.inbounds[] | select(.type == "tuic")' $CONFIG_FILE | while read -r inbound; do
+                        port=$(echo "$inbound" | jq -r '.listen_port')
+                        sni=$(echo "$inbound" | jq -r '.tls.server_name // "bing.com"')
+                        dom=$(sqlite3 $DB_FILE "SELECT domain FROM users WHERE port=$port LIMIT 1;")
+                        if [ -z "$dom" ]; then dom=$(get_ip); fi
+                        
+                        user_obj=$(echo "$inbound" | jq -c ".users[] | select(.uuid == \"$t_uuid\")" 2>/dev/null)
+                        if [ ! -z "$user_obj" ]; then
+                            pass=$(echo "$user_obj" | jq -r '.password')
+                            echo " - [TUIC v5]   tuic://$t_uuid:$pass@$dom:$port?congestion_control=bbr&udp_relay_mode=native&alpn=h3&sni=$sni&allow_insecure=1#TUIC-${t_uuid:0:8}"
+                        fi
+                    done
+                fi
+            done
+            
+            echo -e "\n======================================================="
             read -p "Nhấn Enter để quay lại..." dummy </dev/tty ;;
         2) journalctl -u sing-box --no-hostname -n 50 -f ;;
         3) add_single_node_menu ;;

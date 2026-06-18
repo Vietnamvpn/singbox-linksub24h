@@ -56,18 +56,32 @@ check_and_update_system() {
     echo -e "${BLUE}=================================================${NC}"
     echo -e "${BLUE}       KIỂM TRA HỆ THỐNG & CẬP NHẬT GÓI          ${NC}"
     echo -e "${BLUE}=================================================${NC}"
-    if [ -f /etc/os-release ]; then . /etc/os-release; OS_NAME=$NAME; OS_VER=$VERSION_ID; else exit 1; fi
+    
+    echo -e "${YELLOW}--> Đang kiểm tra thông tin hệ điều hành...${NC}"
+    if [ -f /etc/os-release ]; then 
+        . /etc/os-release; OS_NAME=$NAME; OS_VER=$VERSION_ID
+    else 
+        echo -e "${RED} [LỖI] Không thể đọc thông tin hệ điều hành!${NC}"
+        exit 1
+    fi
+    
     CPU_CORES=$(nproc)
     RAM_TOTAL=$(free -h | awk '/Mem:/ {print $2}')
     DISK_TOTAL=$(df -h / | awk 'NR==2 {print $2}')
     DISK_FREE=$(df -h / | awk 'NR==2 {print $4}')
     
-    echo -e "--> Đang cài đặt thư viện lõi..."
-    apt update -y && apt install -y curl jq wget ufw openssl sqlite3 tar git iptables &>/dev/null
+    echo -e "${YELLOW}--> Đang cập nhật danh sách gói (apt update)...${NC}"
+    apt update -y &>/dev/null || echo -e "${RED} [CẢNH BÁO] Có lỗi nhỏ khi cập nhật apt, tiếp tục tiến trình...${NC}"
+    
+    echo -e "${YELLOW}--> Đang cài đặt các thư viện lõi (curl, jq, wget, ufw, openssl, sqlite3...)...${NC}"
+    apt install -y curl jq wget ufw openssl sqlite3 tar git iptables &>/dev/null
+    
+    echo -e "${GREEN}--> Kiểm tra và chuẩn bị hệ thống hoàn tất!${NC}"
+    sleep 1
     
     clear
     echo -e "${GREEN}=================================================${NC}"
-    echo -e "${GREEN}    THÔNG TIN HỆ THỐNG VPS CỦA BẠN             ${NC}"
+    echo -e "${GREEN}    THÔNG TIN HỆ THỐNG VPS CỦA BẠN               ${NC}"
     echo -e "${GREEN}=================================================${NC}"
     echo -e " Hệ điều hành : ${YELLOW}$OS_NAME $OS_VER${NC}"
     echo -e " Chip xử lý    : ${YELLOW}$CPU_CORES Cores CPU${NC}"
@@ -77,18 +91,39 @@ check_and_update_system() {
     echo -e " 1. Đồng ý và tiếp tục cài đặt"
     echo -e " 0. Hủy bỏ"
     read -p "Lựa chọn của bạn (0-1): " init_choice </dev/tty
-    if [ "$init_choice" != "1" ]; then exit 0; fi
+    if [ "$init_choice" != "1" ]; then 
+        echo -e "${RED} Đã hủy cài đặt.${NC}"
+        exit 0
+    fi
     install_core
 }
 
 install_core() {
+    echo -e "\n${BLUE}=================================================${NC}"
+    echo -e "${BLUE}           BẮT ĐẦU CÀI ĐẶT SING-BOX              ${NC}"
+    echo -e "${BLUE}=================================================${NC}"
+    
+    echo -e "${YELLOW}--> Đang tạo thư mục lưu trữ cấu hình...${NC}"
     mkdir -p $CONFIG_DIR
+    
+    echo -e "${YELLOW}--> Đang quét phiên bản Sing-box mới nhất từ Github...${NC}"
     TAG_NAME=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r .tag_name)
+    if [ -z "$TAG_NAME" ] || [ "$TAG_NAME" == "null" ]; then
+        echo -e "${RED} [LỖI] Không thể kết nối API Github để lấy phiên bản. Vui lòng kiểm tra lại mạng!${NC}"
+        exit 1
+    fi
     VERSION=${TAG_NAME#v}
+    echo -e "${GREEN}--> Tìm thấy phiên bản: ${TAG_NAME}${NC}"
+    
+    echo -e "${YELLOW}--> Đang tải xuống tệp cài đặt (sing-box-${VERSION}-linux-amd64.tar.gz)...${NC}"
     wget -qO sing-box.tar.gz "https://github.com/SagerNet/sing-box/releases/download/${TAG_NAME}/sing-box-${VERSION}-linux-amd64.tar.gz"
+    
+    echo -e "${YELLOW}--> Đang giải nén và thiết lập quyền thực thi...${NC}"
     tar -xzf sing-box.tar.gz && mv sing-box-${VERSION}-linux-amd64/sing-box /usr/local/bin/
     rm -rf sing-box.tar.gz sing-box-* && chmod +x /usr/local/bin/sing-box
+    echo -e "${GREEN}--> Cài đặt Sing-box Core thành công!${NC}"
     
+    echo -e "${YELLOW}--> Đang khởi tạo tệp cấu hình (config.json)...${NC}"
     if [ ! -f $CONFIG_FILE ]; then
         cat << 'EOF' > $CONFIG_FILE
 {
@@ -99,10 +134,14 @@ install_core() {
 EOF
     fi
 
+    echo -e "${YELLOW}--> Đang thiết lập cơ sở dữ liệu SQLite...${NC}"
     # Cấu trúc DB mới: Tích hợp thêm cột lưu Domain
     sqlite3 $DB_FILE "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, node_type TEXT, port INTEGER, domain TEXT, user_key TEXT);"
+    
+    echo -e "${YELLOW}--> Đang tự động tạo chứng chỉ bảo mật (SSL)...${NC}"
     openssl req -x509 -nodes -newkey rsa:2048 -keyout $CONFIG_DIR/private.key -out $CONFIG_DIR/cert.pem -days 3650 -subj "/CN=bing.com" &>/dev/null
 
+    echo -e "${YELLOW}--> Đang nạp Systemd Service để Sing-box chạy ngầm...${NC}"
     cat << 'EOF' > /etc/systemd/system/sing-box.service
 [Unit]
 Description=Sing-box Proxy Service
@@ -114,7 +153,12 @@ Restart=always
 WantedBy=multi-user.target
 EOF
     systemctl daemon-reload && systemctl enable sing-box &>/dev/null
+    
+    echo -e "${YELLOW}--> Đang tải Menu Quản lý từ nguồn...${NC}"
     curl -sSL "$GITHUB_RAW_URL" -o $SCRIPT_PATH && chmod +x $SCRIPT_PATH
+    
+    echo -e "${GREEN}--> HOÀN TẤT THIẾT LẬP LÕI! Chuẩn bị chuyển sang cài đặt Node...${NC}"
+    sleep 2
     
     node_wizard_initial
 }

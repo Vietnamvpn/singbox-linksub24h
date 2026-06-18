@@ -490,34 +490,36 @@ main_menu() {
             echo -e "${BLUE}=========================================${NC}"
             echo -e "${BLUE}         XÓA NGƯỜI DÙNG KHỎI NODE        ${NC}"
             echo -e "${BLUE}=========================================${NC}"
-            read -p "👉 Nhập chính xác Tên User hoặc mã UUID cần xóa: " target_del </dev/tty
+            read -p "👉 Nhập chính xác Tên User (Name) cần xóa: " target_del </dev/tty
             
             if [ -z "$target_del" ]; then
-                echo -e "${RED}❌ Tên User/UUID không được để trống!${NC}"
+                echo -e "${RED}❌ Tên User không được để trống!${NC}"
                 sleep 2
             else
                 read -p "👉 Nhập Cổng (Port) (Để TRỐNG nếu muốn xóa User này khỏi TẤT CẢ các Node): " port </dev/tty
                 
-                # Tắt tạm thời tính năng thoát script khi có lỗi
                 set +e 
                 
+                # Trích xuất UUID từ dữ liệu Vless trong Database
+                target_uuid=$(sqlite3 $DB_FILE "SELECT user_key FROM users WHERE node_type='vless' AND user_key LIKE '$target_del:%' LIMIT 1;" | cut -d':' -f2)
+                if [ -z "$target_uuid" ]; then
+                    target_uuid="NOT_FOUND_UUID"
+                fi
+                
                 if [ -z "$port" ]; then
-                    # Xóa khỏi toàn bộ Node
-                    jq "(.inbounds[] | select(has(\"users\")).users) |= map(select(.name != \"$target_del\" and .uuid != \"$target_del\"))" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
-                    sqlite3 $DB_FILE "DELETE FROM users WHERE user_key LIKE '$target_del:%' OR user_key LIKE '%:$target_del:%';"
+                    jq "(.inbounds[] | select(has(\"users\")).users) |= map(select((.name // \"\") != \"$target_del\" and (.uuid // \"\") != \"$target_uuid\"))" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
+                    sqlite3 $DB_FILE "DELETE FROM users WHERE user_key LIKE '$target_del:%' OR user_key LIKE '%:$target_uuid:%' OR user_key LIKE '$target_uuid:%';"
                     systemctl restart sing-box
                     echo -e "${GREEN}✅ Đã dọn sạch User [$target_del] khỏi TOÀN BỘ các Node!${NC}"
                     sleep 2
                 else
-                    # Xóa khỏi 1 Node cụ thể
-                    jq "(.inbounds[] | select(.listen_port == $port and has(\"users\")).users) |= map(select(.name != \"$target_del\" and .uuid != \"$target_del\"))" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
-                    sqlite3 $DB_FILE "DELETE FROM users WHERE port=$port AND (user_key LIKE '$target_del:%' OR user_key LIKE '%:$target_del:%');"
+                    jq "(.inbounds[] | select(.listen_port == $port and has(\"users\")).users) |= map(select((.name // \"\") != \"$target_del\" and (.uuid // \"\") != \"$target_uuid\"))" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
+                    sqlite3 $DB_FILE "DELETE FROM users WHERE port=$port AND (user_key LIKE '$target_del:%' OR user_key LIKE '%:$target_uuid:%' OR user_key LIKE '$target_uuid:%');"
                     systemctl restart sing-box
                     echo -e "${GREEN}✅ Đã xóa User [$target_del] khỏi cổng $port!${NC}"
                     sleep 2
                 fi
                 
-                # Bật lại tính năng bắt lỗi cho hệ thống
                 set -e 
             fi
             ;;

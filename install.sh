@@ -285,6 +285,9 @@ add_user_advanced() {
     read -p "🔑 Nhập Mật khẩu mới: " upass </dev/tty
     uuid_gen=$(cat /proc/sys/kernel/random/uuid)
     
+    # Tắt tạm thời tính năng thoát script khi có lỗi (giải quyết lỗi ngắt vòng lặp)
+    set +e 
+    
     if [ -z "$target_port" ]; then
         ports=$(jq -r '.inbounds[].listen_port' $CONFIG_FILE)
         for p in $ports; do
@@ -311,7 +314,7 @@ add_user_advanced() {
         type=$(jq -r ".inbounds[] | select(.listen_port == $target_port) | .type" $CONFIG_FILE)
         dom=$(sqlite3 $DB_FILE "SELECT domain FROM users WHERE port=$target_port LIMIT 1;")
         if [ -z "$dom" ]; then dom=$(get_ip); fi
-        # Xử lý insert cho 1 node giống block phía trên... (để ngắn gọn giữ lại nguyên lý).
+        
         if [ "$type" == "hysteria2" ]; then
             jq "(.inbounds[] | select(.listen_port == $target_port).users) += [{\"name\": \"$uname\", \"password\": \"$upass\"}]" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
             sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('hysteria2', $target_port, '$dom', '$uname:$upass');"
@@ -326,6 +329,10 @@ add_user_advanced() {
         fi
         echo -e "${GREEN}✅ Thêm thành công User mới vào cổng [$target_port]!${NC}"
     fi
+    
+    # Bật lại bắt lỗi toàn hệ thống
+    set -e 
+    
     systemctl restart sing-box; sleep 2
 }
 

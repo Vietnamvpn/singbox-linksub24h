@@ -829,11 +829,11 @@ main_menu() {
                         
                         # Xuất Link cấu hình chuẩn theo từng giao thức
                         if [ "$ntype" == "hysteria2" ]; then
-                            echo " - hysteria2://$upass@$dom:$port?insecure=1&sni=$sni#Hy2-$u_name"
+                            echo " hysteria2://$upass@$dom:$port?insecure=1&sni=$sni#Hy2-$u_name"
                         elif [ "$ntype" == "tuic" ]; then
-                            echo " - tuic://$uuid:$upass@$dom:$port?congestion_control=bbr&udp_relay_mode=native&alpn=h3&sni=$sni&allow_insecure=1#TUIC-$u_name"
+                            echo " tuic://$uuid:$upass@$dom:$port?congestion_control=bbr&udp_relay_mode=native&alpn=h3&sni=$sni&allow_insecure=1#TUIC-$u_name"
                         elif [ "$ntype" == "vless" ]; then
-                            echo " - vless://$uuid@$dom:$port?security=reality&encryption=none&pbk=$pub_k&headerType=none&fp=chrome&spx=%2F&type=grpc&sni=$sni&serviceName=vless-grpc&sid=0123456789abcdef#VLESS-$u_name"
+                            echo " vless://$uuid@$dom:$port?security=reality&encryption=none&pbk=$pub_k&headerType=none&fp=chrome&spx=%2F&type=grpc&sni=$sni&serviceName=vless-grpc&sid=0123456789abcdef#VLESS-$u_name"
                         fi
                     done
                 done

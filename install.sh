@@ -329,6 +329,49 @@ add_user_advanced() {
     systemctl restart sing-box; sleep 2
 }
 
+# --- HÀM GỠ CÀI ĐẶT TOÀN BỘ ---
+uninstall_system() {
+    clear
+    echo -e "${RED}=========================================${NC}"
+    echo -e "${RED}   CẢNH BÁO: GỠ CÀI ĐẶT VÀ XÓA TÀN DƯ    ${NC}"
+    echo -e "${RED}=========================================${NC}"
+    echo -e "⚠️ Thao tác này sẽ xóa KHÔNG THỂ KHÔI PHỤC:"
+    echo -e " - Toàn bộ cấu hình Node và Database người dùng."
+    echo -e " - File thực thi Core Sing-box."
+    echo -e " - Dịch vụ (Service) chạy ngầm của hệ thống."
+    echo -e " - Xóa cả script menu tool này."
+    echo -e "----------------------------------------"
+    read -p "Bạn có CHẮC CHẮN muốn dọn sạch mọi thứ không? (y/n): " confirm </dev/tty
+    
+    if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+        echo -e "\n${YELLOW}--> Đang dừng và gỡ bỏ Service...${NC}"
+        systemctl stop sing-box &>/dev/null
+        systemctl disable sing-box &>/dev/null
+        rm -f /etc/systemd/system/sing-box.service
+        systemctl daemon-reload
+        
+        echo -e "${YELLOW}--> Đang xóa Core và File cấu hình...${NC}"
+        rm -f /usr/local/bin/sing-box
+        rm -rf /usr/local/etc/sing-box
+        
+        echo -e "${YELLOW}--> Đang dọn dẹp Iptables Port Range (nếu có)...${NC}"
+        if [ -f /etc/rc.local ]; then
+            sed -i '/iptables -t nat -A PREROUTING -p udp --dport/d' /etc/rc.local 2>/dev/null
+        fi
+        
+        echo -e "${YELLOW}--> Đang xóa Tool Menu...${NC}"
+        rm -f /usr/local/bin/box-tool
+        
+        echo -e "${GREEN}✅ Đã dọn sạch toàn bộ tàn dư của Sing-box trên VPS!${NC}"
+        echo -e "Script sẽ tự động thoát."
+        rm -f $0 # Tự xóa chính file script đang chạy
+        exit 0
+    else
+        echo -e "${GREEN}Đã hủy thao tác gỡ cài đặt.${NC}"
+        sleep 2
+    fi
+}
+
 main_menu() {
     clear
     echo -e "${BLUE}=========================================${NC}"
@@ -343,8 +386,22 @@ main_menu() {
     echo -e " 5. [USER] Thêm người dùng (Đơn lẻ / Toàn bộ)"
     echo -e " 6. [USER] Xóa bỏ người dùng khỏi Node"
     echo -e "----------------------------------------"
+    echo -e " 7. [SYSTEM] 🟢 Bắt đầu (Start) Sing-box"
+    echo -e " 8. [SYSTEM] 🔴 Dừng (Stop) Sing-box"
+    echo -e " 9. [SYSTEM] 🔄 Khởi động lại (Restart)"
+    echo -e " 10.[SYSTEM] 🗑️  Gỡ cài đặt (Xóa sạch tàn dư)"
+    echo -e "----------------------------------------"
     echo -e " 0. Thoát hệ thống"
     echo -e "${BLUE}=========================================${NC}"
+    
+    # Lấy trạng thái hiện tại của Sing-box để hiển thị
+    if systemctl is-active --quiet sing-box; then
+        echo -e "Trạng thái: ${GREEN}Đang chạy (Active)${NC}"
+    else
+        echo -e "Trạng thái: ${RED}Đã dừng (Inactive)${NC}"
+    fi
+    echo -e "----------------------------------------"
+    
     read -p "Nhập lựa chọn: " m_choice </dev/tty
     
     case $m_choice in
@@ -370,16 +427,16 @@ main_menu() {
                     if [ "$type" == "hysteria2" ]; then
                         name=$(echo "$user_obj" | jq -r '.name')
                         pass=$(echo "$user_obj" | jq -r '.password')
-                        echo " hysteria2://$pass@$dom:$port?insecure=1&sni=$sni#Hy2-$name-$port"
+                        echo "🚀 hysteria2://$pass@$dom:$port?insecure=1&sni=$sni#Hy2-$name-$port"
                     elif [ "$type" == "tuic" ]; then
                         uuid=$(echo "$user_obj" | jq -r '.uuid')
                         pass=$(echo "$user_obj" | jq -r '.password')
-                        echo " tuic://$uuid:$pass@$dom:$port?congestion_control=bbr&udp_relay_mode=native&alpn=h3&sni=$sni&allow_insecure=1#TUIC-${uuid:0:8}-$port"
+                        echo "🛸 tuic://$uuid:$pass@$dom:$port?congestion_control=bbr&udp_relay_mode=native&alpn=h3&sni=$sni&allow_insecure=1#TUIC-${uuid:0:8}-$port"
                     elif [ "$type" == "vless" ]; then
                         uuid=$(echo "$user_obj" | jq -r '.uuid')
                         name=$(echo "$user_obj" | jq -r '.name')
                         pub_k=$(sqlite3 $DB_FILE "SELECT user_key FROM users WHERE port=$port AND user_key LIKE '$name:%';" | cut -d':' -f3)
-                        echo " vless://$uuid@$dom:$port?security=reality&encryption=none&pbk=$pub_k&headerType=none&fp=chrome&spx=%2F&type=grpc&sni=$sni&serviceName=vless-grpc&sid=0123456789abcdef#VLESS-Reality-$name"
+                        echo "🛰️  vless://$uuid@$dom:$port?security=reality&encryption=none&pbk=$pub_k&headerType=none&fp=chrome&spx=%2F&type=grpc&sni=$sni&serviceName=vless-grpc&sid=0123456789abcdef#VLESS-Reality-$name"
                     fi
                 done
             done
@@ -403,6 +460,24 @@ main_menu() {
             fi
             sqlite3 $DB_FILE "DELETE FROM users WHERE port=$port AND user_key LIKE '$target_del:%';"
             systemctl restart sing-box; echo -e "${GREEN}Đã thực thi xóa.${NC}"; sleep 2 ;;
+        7) 
+            systemctl start sing-box
+            echo -e "${GREEN}✅ Đã BẬT dịch vụ Sing-box!${NC}"
+            sleep 2 
+            ;;
+        8) 
+            systemctl stop sing-box
+            echo -e "${YELLOW}⚠️ Đã DỪNG dịch vụ Sing-box!${NC}"
+            sleep 2 
+            ;;
+        9) 
+            systemctl restart sing-box
+            echo -e "${GREEN}✅ Đã KHỞI ĐỘNG LẠI dịch vụ Sing-box thành công!${NC}"
+            sleep 2 
+            ;;
+        10) 
+            uninstall_system 
+            ;;
         0) exit 0 ;;
         *) ;;
     esac

@@ -67,12 +67,12 @@ check_and_update_system() {
     
     clear
     echo -e "${GREEN}=================================================${NC}"
-    echo -e "${GREEN}   🔍 THÔNG TIN HỆ THỐNG VPS CỦA BẠN             ${NC}"
+    echo -e "${GREEN}    THÔNG TIN HỆ THỐNG VPS CỦA BẠN             ${NC}"
     echo -e "${GREEN}=================================================${NC}"
-    echo -e " 🖥️  Hệ điều hành : ${YELLOW}$OS_NAME $OS_VER${NC}"
-    echo -e " 🧠 Chip xử lý    : ${YELLOW}$CPU_CORES Cores CPU${NC}"
-    echo -e " 📟 Dung lượng RAM: ${YELLOW}$RAM_TOTAL${NC}"
-    echo -e " 💽 Ổ đĩa lưu trữ : ${YELLOW}Tổng $DISK_TOTAL (Còn trống $DISK_FREE)${NC}"
+    echo -e " Hệ điều hành : ${YELLOW}$OS_NAME $OS_VER${NC}"
+    echo -e " Chip xử lý    : ${YELLOW}$CPU_CORES Cores CPU${NC}"
+    echo -e " Dung lượng RAM: ${YELLOW}$RAM_TOTAL${NC}"
+    echo -e " Ổ đĩa lưu trữ : ${YELLOW}Tổng $DISK_TOTAL (Còn trống $DISK_FREE)${NC}"
     echo -e "${GREEN}=================================================${NC}"
     echo -e " 1. Đồng ý và tiếp tục cài đặt"
     echo -e " 0. Hủy bỏ"
@@ -164,8 +164,8 @@ node_wizard_initial() {
         fi
         
         node_idx=$((node_idx + 1))
-        echo -e "${GREEN}📋 Đã lưu thành công.${NC}"
-        read -p "Bạn có muốn thêm Node giao thức khác không? (y/n): " ext_choice </dev/tty
+        echo -e "${GREEN} Đã lưu thành công.${NC}"
+        read -p " Bạn có muốn thêm Node giao thức khác không? (y/n): " ext_choice </dev/tty
         if [[ "$ext_choice" != "y" && "$ext_choice" != "Y" ]]; then break; fi
     done
     
@@ -173,8 +173,8 @@ node_wizard_initial() {
     echo -e "${PURPLE}========================================= ${NC}"
     echo -e "${PURPLE}   BƯỚC 2: KHỞI TẠO USER CHO TẤT CẢ NODE  ${NC}"
     echo -e "${PURPLE}========================================= ${NC}"
-    read -p "👤 Nhập tên Tài khoản (Username) chung: " common_name </dev/tty
-    read -p "🔑 Nhập Mật khẩu (Password) chung: " common_pass </dev/tty
+    read -p " Nhập tên Tài khoản (Username) chung: " common_name </dev/tty
+    read -p " Nhập Mật khẩu (Password) chung: " common_pass </dev/tty
     common_uuid=$(cat /proc/sys/kernel/random/uuid)
     
     for ((i=0; i<$node_idx; i++)); do
@@ -204,7 +204,7 @@ node_wizard_initial() {
         fi
     done
     systemctl restart sing-box; ufw reload &>/dev/null
-    echo -e "\n${GREEN}🎉 ĐÃ THIẾT LẬP XONG TOÀN BỘ NODE! Nhấn Enter để vào Menu.${NC}"
+    echo -e "\n${GREEN} ĐÃ THIẾT LẬP XONG TOÀN BỘ NODE! Nhấn Enter để vào Menu.${NC}"
     read dummy </dev/tty
     main_menu
 }
@@ -229,8 +229,8 @@ add_single_node_menu() {
     prompt_node_config $proto
     
     echo -e "----------------------------------------"
-    read -p "👤 Nhập Username dành riêng cho Node mới này: " uname </dev/tty
-    read -p "🔑 Nhập Password dành riêng cho Node mới này: " upass </dev/tty
+    read -p " Nhập Username dành riêng cho Node mới này: " uname </dev/tty
+    read -p " Nhập Password dành riêng cho Node mới này: " upass </dev/tty
     uuid_gen=$(cat /proc/sys/kernel/random/uuid)
     
     port=$RET_PORT
@@ -270,7 +270,7 @@ add_single_node_menu() {
     fi
     
     systemctl restart sing-box
-    echo -e "${GREEN}✅ Thêm Node độc lập hoàn tất! Không ảnh hưởng tới các Node cũ.${NC}"
+    echo -e "${GREEN} Thêm Node độc lập hoàn tất! Không ảnh hưởng tới các Node cũ.${NC}"
     sleep 3
 }
 # --- THÊM NGƯỜI DÙNG MỚI VÀO NODE ---
@@ -279,11 +279,11 @@ add_user_advanced() {
     echo -e "${BLUE}=========================================${NC}"
     echo -e "${BLUE}         THÊM NGƯỜI DÙNG MỚI VÀO NODE    ${NC}"
     echo -e "${BLUE}=========================================${NC}"
-    read -p "👉 Nhập cổng Node (Để TRỐNG để thêm tự động vào TẤT CẢ các Node): " target_port </dev/tty
+    read -p " Nhập cổng Node (Để TRỐNG để thêm tự động vào TẤT CẢ các Node): " target_port </dev/tty
     
-    read -p "👤 Nhập tên User: " uname </dev/tty
+    read -p " Nhập tên User: " uname </dev/tty
     if [ -z "$uname" ]; then
-        echo -e "${RED}❌ Lỗi: Tên User không được để trống! Thao tác bị hủy.${NC}"
+        echo -e "${RED} Lỗi: Tên User không được để trống! Thao tác bị hủy.${NC}"
         sleep 3
         return
     fi
@@ -292,14 +292,14 @@ add_user_advanced() {
     if [ -z "$target_port" ]; then
         db_count=$(sqlite3 $DB_FILE "SELECT COUNT(*) FROM users WHERE user_key LIKE '$uname:%';")
         if [ "$db_count" -gt 0 ]; then
-            echo -e "${YELLOW}⚠️ Lỗi: Người dùng '$uname' ĐÃ TỒN TẠI! Không thể thêm đồng loạt để tránh trùng lặp.${NC}"
+            echo -e "${YELLOW} Lỗi: Người dùng '$uname' ĐÃ TỒN TẠI! Không thể thêm đồng loạt để tránh trùng lặp.${NC}"
             sleep 3
             return
         fi
     else
         db_count=$(sqlite3 $DB_FILE "SELECT COUNT(*) FROM users WHERE port=$target_port AND user_key LIKE '$uname:%';")
         if [ "$db_count" -gt 0 ]; then
-            echo -e "${YELLOW}⚠️ Lỗi: Người dùng '$uname' ĐÃ CÓ MẶT ở Node cổng $target_port! Thao tác bị hủy.${NC}"
+            echo -e "${YELLOW} Lỗi: Người dùng '$uname' ĐÃ CÓ MẶT ở Node cổng $target_port! Thao tác bị hủy.${NC}"
             sleep 3
             return
         fi
@@ -313,9 +313,9 @@ add_user_advanced() {
     
     if [ -n "$existing_pass" ]; then
         upass=$existing_pass
-        echo -e "👉 Đã tìm thấy tên User cũ, tự động dùng lại Mật khẩu: ${GREEN}$upass${NC}"
+        echo -e " Đã tìm thấy tên User cũ, tự động dùng lại Mật khẩu: ${GREEN}$upass${NC}"
     else
-        read -p "🔑 Nhập Mật khẩu mới: " upass </dev/tty
+        read -p " Nhập Mật khẩu mới: " upass </dev/tty
     fi
 
     existing_uuid=$(sqlite3 $DB_FILE "SELECT user_key FROM users WHERE node_type='vless' AND user_key LIKE '$uname:%' LIMIT 1;" | cut -d':' -f2 | tr -d '\r')
@@ -325,7 +325,7 @@ add_user_advanced() {
     
     if [ -n "$existing_uuid" ]; then
         uuid_gen=$existing_uuid
-        echo -e "👉 Đã tìm thấy tên User cũ, tự động đồng bộ UUID: ${GREEN}$uuid_gen${NC}"
+        echo -e " Đã tìm thấy tên User cũ, tự động đồng bộ UUID: ${GREEN}$uuid_gen${NC}"
     else
         uuid_gen=$(cat /proc/sys/kernel/random/uuid)
     fi
@@ -361,15 +361,15 @@ add_user_advanced() {
         done
         
         if [ "$success_count" -gt 0 ]; then
-            echo -e "${GREEN}✅ Đã thêm User [${uname}] vào $success_count Node thành công!${NC}"
+            echo -e "${GREEN} Đã thêm User [${uname}] vào $success_count Node thành công!${NC}"
         else
-            echo -e "${RED}❌ Lỗi cấu hình JSON, không thêm được Node nào!${NC}"
+            echo -e "${RED} Lỗi cấu hình JSON, không thêm được Node nào!${NC}"
         fi
     else
         type=$(jq -r ".inbounds[] | select(.listen_port == $target_port) | .type" $CONFIG_FILE)
         
         if [ -z "$type" ] || [ "$type" == "null" ]; then
-            echo -e "${RED}❌ Lỗi: Cổng $target_port không tồn tại trong cấu hình!${NC}"
+            echo -e "${RED} Lỗi: Cổng $target_port không tồn tại trong cấu hình!${NC}"
         else
             dom=$(sqlite3 $DB_FILE "SELECT domain FROM users WHERE port=$target_port LIMIT 1;")
             if [ -z "$dom" ]; then dom=$(get_ip); fi
@@ -386,7 +386,7 @@ add_user_advanced() {
                 jq "(.inbounds[] | select(.listen_port == $target_port).users) += [{\"uuid\": \"$uuid_gen\", \"name\": \"$uname\"}]" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
                 sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('vless', $target_port, '$dom', '$uname:$uuid_gen:$pub_k:$sni');"
             fi
-            echo -e "${GREEN}✅ Đã thêm User [${uname}] vào cổng [$target_port] thành công!${NC}"
+            echo -e "${GREEN} Đã thêm User [${uname}] vào cổng [$target_port] thành công!${NC}"
         fi
     fi
     
@@ -399,7 +399,7 @@ uninstall_system() {
     echo -e "${RED}=========================================${NC}"
     echo -e "${RED}   CẢNH BÁO: GỠ CÀI ĐẶT VÀ XÓA TÀN DƯ    ${NC}"
     echo -e "${RED}=========================================${NC}"
-    echo -e "⚠️ Thao tác này sẽ xóa KHÔNG THỂ KHÔI PHỤC:"
+    echo -e " Thao tác này sẽ xóa KHÔNG THỂ KHÔI PHỤC:"
     echo -e " - Toàn bộ cấu hình Node và Database người dùng."
     echo -e " - File thực thi Core Sing-box."
     echo -e " - Dịch vụ (Service) chạy ngầm của hệ thống."
@@ -426,7 +426,7 @@ uninstall_system() {
         echo -e "${YELLOW}--> Đang xóa Tool Menu...${NC}"
         rm -f /usr/local/bin/box-tool
         
-        echo -e "${GREEN}✅ Đã dọn sạch toàn bộ tàn dư của Sing-box trên VPS!${NC}"
+        echo -e "${GREEN} Đã dọn sạch toàn bộ tàn dư của Sing-box trên VPS!${NC}"
         echo -e "Script sẽ tự động thoát."
         rm -f $0 # Tự xóa chính file script đang chạy
         exit 0
@@ -451,13 +451,13 @@ update_script() {
     if [ $? -eq 0 ] && [ -s /tmp/box-tool-update.sh ]; then
         mv /tmp/box-tool-update.sh $SCRIPT_PATH
         chmod +x $SCRIPT_PATH
-        echo -e "${GREEN}✅ Đã cập nhật Tool thành công!${NC}"
+        echo -e "${GREEN} Đã cập nhật Tool thành công!${NC}"
         echo -e "--> Đang khởi động lại giao diện mới..."
         sleep 3
         # Tự động thay thế tiến trình hiện tại bằng script mới
         exec $SCRIPT_PATH
     else
-        echo -e "${RED}❌ Cập nhật thất bại! Không thể tải file từ Github.${NC}"
+        echo -e "${RED} Cập nhật thất bại! Không thể tải file từ Github.${NC}"
         echo -e "Vui lòng kiểm tra lại mạng hoặc link Github."
         rm -f /tmp/box-tool-update.sh
         sleep 3
@@ -472,17 +472,17 @@ main_menu() {
     echo -e " 1. Xem danh sách & Xuất Link kết nối User"
     echo -e " 2. Xem LOG theo dõi kết nối trực tiếp"
     echo -e "----------------------------------------"
-    echo -e " 3. [NODE] Thêm một Node độc lập mới"
-    echo -e " 4. [NODE] Xóa bỏ một Node (Đóng cổng)"
+    echo -e " 3. Thêm một Node độc lập mới"
+    echo -e " 4. Xóa bỏ một Node (Đóng cổng)"
     echo -e "----------------------------------------"
-    echo -e " 5. [USER] Thêm người dùng (Đơn lẻ / Toàn bộ)"
-    echo -e " 6. [USER] Xóa bỏ người dùng khỏi Node"
+    echo -e " 5. Thêm người dùng (Đơn lẻ / Toàn bộ)"
+    echo -e " 6. Xóa bỏ người dùng khỏi Node"
     echo -e "----------------------------------------"
-    echo -e " 7. [SYSTEM] Bắt đầu (Start) Sing-box"
-    echo -e " 8. [SYSTEM] Dừng (Stop) Sing-box"
-    echo -e " 9. [SYSTEM] Khởi động lại (Restart)"
-    echo -e " 10.[SYSTEM] Gỡ cài đặt (Xóa sạch tàn dư)"
-    echo -e " 11.[SYSTEM] Cập nhật Tool (Từ Github)"
+    echo -e " 7. Bắt đầu (Start) Sing-box"
+    echo -e " 8. Dừng (Stop) Sing-box"
+    echo -e " 9. Khởi động lại (Restart)"
+    echo -e " 10. Gỡ cài đặt (Xóa sạch tàn dư)"
+    echo -e " 11. Cập nhật Tool (Từ Github)"
     echo -e "----------------------------------------"
     echo -e " 0. Thoát hệ thống"
     echo -e "${BLUE}=========================================${NC}"
@@ -513,7 +513,7 @@ main_menu() {
             
             # Xuất nhóm có Tên (Name)
             for u_name in $all_names; do
-                echo -e "\n👤 NGƯỜI DÙNG: $u_name"
+                echo -e "\n NGƯỜI DÙNG: $u_name"
                 echo "-------------------------------------------------------"
                 
                 # Trích xuất UUID tương ứng của user này từ Vless
@@ -554,7 +554,7 @@ main_menu() {
             # Xuất nhóm TUIC lẻ tẻ (Chỉ có UUID, không được tạo kèm Tên)
             for t_uuid in $all_tuic_uuids; do
                 if [[ ! "$printed_uuids" == *"$t_uuid"* ]]; then
-                    echo -e "\n👤 NGƯỜI DÙNG (Độc lập UUID): $t_uuid"
+                    echo -e "\n NGƯỜI DÙNG (Độc lập UUID): $t_uuid"
                     echo "-------------------------------------------------------"
                     jq -c '.inbounds[] | select(.type == "tuic")' $CONFIG_FILE | while read -r inbound; do
                         port=$(echo "$inbound" | jq -r '.listen_port')
@@ -586,13 +586,13 @@ main_menu() {
             echo -e "${BLUE}=========================================${NC}"
             echo -e "${BLUE}         XÓA NGƯỜI DÙNG KHỎI NODE        ${NC}"
             echo -e "${BLUE}=========================================${NC}"
-            read -p "👉 Nhập chính xác Tên User cần xóa: " target_del </dev/tty
+            read -p " Nhập chính xác Tên User cần xóa: " target_del </dev/tty
             
             if [ -z "$target_del" ]; then
-                echo -e "${RED}❌ Tên User không được để trống!${NC}"
+                echo -e "${RED} Tên User không được để trống!${NC}"
                 sleep 3
             else
-                read -p "👉 Nhập Cổng (Port) (Để TRỐNG nếu muốn xóa User này khỏi TẤT CẢ các Node): " port </dev/tty
+                read -p " Nhập Cổng (Port) (Để TRỐNG nếu muốn xóa User này khỏi TẤT CẢ các Node): " port </dev/tty
                 
                 set +e 
                 
@@ -603,13 +603,13 @@ main_menu() {
                     jq "(.inbounds[] | select(has(\"users\")).users) |= map(select((.name // \"\") != \"$target_del\" and (.uuid // \"\") != \"$target_del\" and (.uuid // \"\") != \"$target_uuid\"))" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
                     sqlite3 $DB_FILE "DELETE FROM users WHERE user_key LIKE '$target_del:%' OR user_key LIKE '%:$target_uuid:%' OR user_key LIKE '$target_uuid:%';"
                     systemctl restart sing-box
-                    echo -e "${GREEN}✅ Đã dọn sạch User [$target_del] khỏi TOÀN BỘ các Node!${NC}"
+                    echo -e "${GREEN} Đã dọn sạch User [$target_del] khỏi TOÀN BỘ các Node!${NC}"
                     sleep 3
                 else
                     jq "(.inbounds[] | select(.listen_port == $port and has(\"users\")).users) |= map(select((.name // \"\") != \"$target_del\" and (.uuid // \"\") != \"$target_del\" and (.uuid // \"\") != \"$target_uuid\"))" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
                     sqlite3 $DB_FILE "DELETE FROM users WHERE port=$port AND (user_key LIKE '$target_del:%' OR user_key LIKE '%:$target_uuid:%' OR user_key LIKE '$target_uuid:%');"
                     systemctl restart sing-box
-                    echo -e "${GREEN}✅ Đã xóa User [$target_del] khỏi cổng $port!${NC}"
+                    echo -e "${GREEN} Đã xóa User [$target_del] khỏi cổng $port!${NC}"
                     sleep 3
                 fi
                 
@@ -618,17 +618,17 @@ main_menu() {
             ;;
         7) 
             systemctl start sing-box
-            echo -e "${GREEN}✅ Đã BẬT dịch vụ Sing-box!${NC}"
+            echo -e "${GREEN} Đã BẬT dịch vụ Sing-box!${NC}"
             sleep 3 
             ;;
         8) 
             systemctl stop sing-box
-            echo -e "${YELLOW}⚠️ Đã DỪNG dịch vụ Sing-box!${NC}"
+            echo -e "${YELLOW} Đã DỪNG dịch vụ Sing-box!${NC}"
             sleep 3 
             ;;
         9) 
             systemctl restart sing-box
-            echo -e "${GREEN}✅ Đã KHỞI ĐỘNG LẠI dịch vụ Sing-box thành công!${NC}"
+            echo -e "${GREEN} Đã KHỞI ĐỘNG LẠI dịch vụ Sing-box thành công!${NC}"
             sleep 3 
             ;;
         10) 

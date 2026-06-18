@@ -498,6 +498,9 @@ main_menu() {
             else
                 read -p "👉 Nhập Cổng (Port) (Để TRỐNG nếu muốn xóa User này khỏi TẤT CẢ các Node): " port </dev/tty
                 
+                # Tắt tạm thời tính năng thoát script khi có lỗi
+                set +e 
+                
                 if [ -z "$port" ]; then
                     # Xóa khỏi toàn bộ Node
                     jq "(.inbounds[] | select(has(\"users\")).users) |= map(select(.name != \"$target_del\" and .uuid != \"$target_del\"))" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
@@ -513,6 +516,9 @@ main_menu() {
                     echo -e "${GREEN}✅ Đã xóa User [$target_del] khỏi cổng $port!${NC}"
                     sleep 2
                 fi
+                
+                # Bật lại tính năng bắt lỗi cho hệ thống
+                set -e 
             fi
             ;;
         7) 

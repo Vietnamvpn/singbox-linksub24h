@@ -221,20 +221,29 @@ node_wizard_initial() {
     read -p " Nhập Mật khẩu (Password) chung: " common_pass </dev/tty
     common_uuid=$(cat /proc/sys/kernel/random/uuid)
     
+    # Xử lý làm sạch đầu vào để chống lỗi SQL Injection khi insert vào database
+    safe_common_name=$(echo "$common_name" | sed "s/'/''/g")
+    safe_common_pass=$(echo "$common_pass" | sed "s/'/''/g")
+    
     for ((i=0; i<$node_idx; i++)); do
         type=${SESSION_TYPES[$i]}
         port=${SESSION_PORTS[$i]}
         dom=${SESSION_DOMAINS[$i]}
         sni=${SESSION_SNIS[$i]}
         
+        # Làm sạch domain để đưa vào SQLite an toàn
+        safe_dom=$(echo "$dom" | sed "s/'/''/g")
+        
         if [ "$type" == "hysteria2" ]; then
-            jq ".inbounds += [{\"type\": \"hysteria2\", \"tag\": \"hy2-$port\", \"listen\": \"::\", \"listen_port\": $port, \"users\": [{\"name\": \"$common_name\", \"password\": \"$common_pass\"}], \"tls\": {\"enabled\": true, \"certificate_path\": \"$CONFIG_DIR/cert.pem\", \"key_path\": \"$CONFIG_DIR/private.key\", \"server_name\": \"$sni\"}}]" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
+            jq ".inbounds += [{\"type\": \"hysteria2\", \"tag\": \"hy2-$port\", \"listen\": \"::\", \"listen_port\": $port, \"users\": [{\"name\": \"$common_name\", \"password\": \"$common_pass\"}], \"tls\": {\"enabled\": true, \"certificate_path\": \"$CONFIG_DIR/cert.pem\", \"key_path\": \"$CONFIG_DIR/private.key\", \"server_name\": \"$sni\"}}]" $CONFIG_FILE > tmp.json && [ -s tmp.json ] && mv tmp.json $CONFIG_FILE || rm -f tmp.json
             # Cập nhật DB: name::pass::
-            sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('hysteria2', $port, '$dom', '$common_name::$common_pass::');"
+            sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('hysteria2', $port, '$safe_dom', '$safe_common_name::$safe_common_pass::');"
+            
         elif [ "$type" == "tuic" ]; then
-            jq ".inbounds += [{\"type\": \"tuic\", \"tag\": \"tuic-$port\", \"listen\": \"::\", \"listen_port\": $port, \"users\": [{\"uuid\": \"$common_uuid\", \"password\": \"$common_pass\"}], \"congestion_control\": \"bbr\", \"tls\": {\"enabled\": true, \"certificate_path\": \"$CONFIG_DIR/cert.pem\", \"key_path\": \"$CONFIG_DIR/private.key\", \"alpn\": [\"h3\"], \"server_name\": \"$sni\"}}]" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
+            jq ".inbounds += [{\"type\": \"tuic\", \"tag\": \"tuic-$port\", \"listen\": \"::\", \"listen_port\": $port, \"users\": [{\"uuid\": \"$common_uuid\", \"password\": \"$common_pass\"}], \"congestion_control\": \"bbr\", \"tls\": {\"enabled\": true, \"certificate_path\": \"$CONFIG_DIR/cert.pem\", \"key_path\": \"$CONFIG_DIR/private.key\", \"alpn\": [\"h3\"], \"server_name\": \"$sni\"}}]" $CONFIG_FILE > tmp.json && [ -s tmp.json ] && mv tmp.json $CONFIG_FILE || rm -f tmp.json
             # Cập nhật DB: name:uuid:pass::
-            sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('tuic', $port, '$dom', '$common_name:$common_uuid:$common_pass::');"
+            sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('tuic', $port, '$safe_dom', '$safe_common_name:$common_uuid:$safe_common_pass::');"
+            
         elif [ "$type" == "vless" ]; then
             /usr/local/bin/sing-box generate reality-keypair > /tmp/kp.txt 2>&1
             priv_key=$(awk '/[Pp]rivate/ {print $NF}' /tmp/kp.txt | tr -d '\r')
@@ -245,9 +254,9 @@ node_wizard_initial() {
             fi
             rm -f /tmp/kp.txt
             
-            jq ".inbounds += [{\"type\": \"vless\", \"tag\": \"vless-$port\", \"listen\": \"::\", \"listen_port\": $port, \"users\": [{\"uuid\": \"$common_uuid\", \"name\": \"$common_name\"}], \"tls\": {\"enabled\": true, \"server_name\": \"$sni\", \"reality\": {\"enabled\": true, \"handshake\": {\"server\": \"$sni\", \"server_port\": 443}, \"private_key\": \"$priv_key\", \"short_id\": [\"0123456789abcdef\"]}}, \"transport\": {\"type\": \"grpc\", \"service_name\": \"vless-grpc\"}}]" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
+            jq ".inbounds += [{\"type\": \"vless\", \"tag\": \"vless-$port\", \"listen\": \"::\", \"listen_port\": $port, \"users\": [{\"uuid\": \"$common_uuid\", \"name\": \"$common_name\"}], \"tls\": {\"enabled\": true, \"server_name\": \"$sni\", \"reality\": {\"enabled\": true, \"handshake\": {\"server\": \"$sni\", \"server_port\": 443}, \"private_key\": \"$priv_key\", \"short_id\": [\"0123456789abcdef\"]}}, \"transport\": {\"type\": \"grpc\", \"service_name\": \"vless-grpc\"}}]" $CONFIG_FILE > tmp.json && [ -s tmp.json ] && mv tmp.json $CONFIG_FILE || rm -f tmp.json
             # Cập nhật DB: name:uuid::pubkey:sni
-            sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('vless', $port, '$dom', '$common_name:$common_uuid::$pub_key:$sni');"
+            sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('vless', $port, '$safe_dom', '$safe_common_name:$common_uuid::$pub_key:$sni');"
         fi
     done
     systemctl restart sing-box; ufw reload &>/dev/null
@@ -286,6 +295,11 @@ add_single_node_menu() {
     sni=$RET_SNI
     range=$RET_RANGE
     
+    # Làm sạch đầu vào để chống lỗi SQL Injection
+    safe_uname=$(echo "$uname" | sed "s/'/''/g")
+    safe_upass=$(echo "$upass" | sed "s/'/''/g")
+    safe_dom=$(echo "$dom" | sed "s/'/''/g")
+    
     ufw allow $port/udp &>/dev/null
     ufw allow $port/tcp &>/dev/null
     if [ ! -z "$range" ]; then
@@ -299,13 +313,13 @@ add_single_node_menu() {
     fi
     
     if [ "$proto" == "hysteria2" ]; then
-        jq ".inbounds += [{\"type\": \"hysteria2\", \"tag\": \"hy2-$port\", \"listen\": \"::\", \"listen_port\": $port, \"users\": [{\"name\": \"$uname\", \"password\": \"$upass\"}], \"tls\": {\"enabled\": true, \"certificate_path\": \"$CONFIG_DIR/cert.pem\", \"key_path\": \"$CONFIG_DIR/private.key\", \"server_name\": \"$sni\"}}]" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
+        jq ".inbounds += [{\"type\": \"hysteria2\", \"tag\": \"hy2-$port\", \"listen\": \"::\", \"listen_port\": $port, \"users\": [{\"name\": \"$uname\", \"password\": \"$upass\"}], \"tls\": {\"enabled\": true, \"certificate_path\": \"$CONFIG_DIR/cert.pem\", \"key_path\": \"$CONFIG_DIR/private.key\", \"server_name\": \"$sni\"}}]" $CONFIG_FILE > tmp.json && [ -s tmp.json ] && mv tmp.json $CONFIG_FILE || rm -f tmp.json
         # Cập nhật DB: name::pass::
-        sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('hysteria2', $port, '$dom', '$uname::$upass::');"
+        sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('hysteria2', $port, '$safe_dom', '$safe_uname::$safe_upass::');"
     elif [ "$proto" == "tuic" ]; then
-        jq ".inbounds += [{\"type\": \"tuic\", \"tag\": \"tuic-$port\", \"listen\": \"::\", \"listen_port\": $port, \"users\": [{\"uuid\": \"$uuid_gen\", \"password\": \"$upass\"}], \"congestion_control\": \"bbr\", \"tls\": {\"enabled\": true, \"certificate_path\": \"$CONFIG_DIR/cert.pem\", \"key_path\": \"$CONFIG_DIR/private.key\", \"alpn\": [\"h3\"], \"server_name\": \"$sni\"}}]" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
+        jq ".inbounds += [{\"type\": \"tuic\", \"tag\": \"tuic-$port\", \"listen\": \"::\", \"listen_port\": $port, \"users\": [{\"uuid\": \"$uuid_gen\", \"password\": \"$upass\"}], \"congestion_control\": \"bbr\", \"tls\": {\"enabled\": true, \"certificate_path\": \"$CONFIG_DIR/cert.pem\", \"key_path\": \"$CONFIG_DIR/private.key\", \"alpn\": [\"h3\"], \"server_name\": \"$sni\"}}]" $CONFIG_FILE > tmp.json && [ -s tmp.json ] && mv tmp.json $CONFIG_FILE || rm -f tmp.json
         # Cập nhật DB: name:uuid:pass::
-        sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('tuic', $port, '$dom', '$uname:$uuid_gen:$upass::');"
+        sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('tuic', $port, '$safe_dom', '$safe_uname:$uuid_gen:$safe_upass::');"
     elif [ "$proto" == "vless" ]; then
         /usr/local/bin/sing-box generate reality-keypair > /tmp/kp.txt 2>/dev/null || true
         priv_key=$(awk '/[Pp]rivate/ {print $NF}' /tmp/kp.txt | tr -d '\r')
@@ -315,9 +329,9 @@ add_single_node_menu() {
             pub_key="pub_placeholder"
         fi
         rm -f /tmp/kp.txt
-        jq ".inbounds += [{\"type\": \"vless\", \"tag\": \"vless-$port\", \"listen\": \"::\", \"listen_port\": $port, \"users\": [{\"uuid\": \"$uuid_gen\", \"name\": \"$uname\"}], \"tls\": {\"enabled\": true, \"server_name\": \"$sni\", \"reality\": {\"enabled\": true, \"handshake\": {\"server\": \"$sni\", \"server_port\": 443}, \"private_key\": \"$priv_key\", \"short_id\": [\"0123456789abcdef\"]}}, \"transport\": {\"type\": \"grpc\", \"service_name\": \"vless-grpc\"}}]" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
+        jq ".inbounds += [{\"type\": \"vless\", \"tag\": \"vless-$port\", \"listen\": \"::\", \"listen_port\": $port, \"users\": [{\"uuid\": \"$uuid_gen\", \"name\": \"$uname\"}], \"tls\": {\"enabled\": true, \"server_name\": \"$sni\", \"reality\": {\"enabled\": true, \"handshake\": {\"server\": \"$sni\", \"server_port\": 443}, \"private_key\": \"$priv_key\", \"short_id\": [\"0123456789abcdef\"]}}, \"transport\": {\"type\": \"grpc\", \"service_name\": \"vless-grpc\"}}]" $CONFIG_FILE > tmp.json && [ -s tmp.json ] && mv tmp.json $CONFIG_FILE || rm -f tmp.json
         # Cập nhật DB: name:uuid::pubkey:sni
-        sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('vless', $port, '$dom', '$uname:$uuid_gen::$pub_key:$sni');"
+        sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('vless', $port, '$safe_dom', '$safe_uname:$uuid_gen::$pub_key:$sni');"
     fi
     
     systemctl restart sing-box
@@ -339,17 +353,20 @@ add_user_advanced() {
         sleep 3
         return
     fi
+    
+    # Làm sạch tên user ngay từ đầu để dùng an toàn trong các câu lệnh SQL
+    safe_uname=$(echo "$uname" | sed "s/'/''/g")
 
     # 1. KIỂM TRA TỒN TẠI ĐỂ TRÁNH TRÙNG LẶP TRÊN CÙNG 1 NODE
     if [ -z "$target_port" ]; then
-        db_count=$(sqlite3 $DB_FILE "SELECT COUNT(*) FROM users WHERE user_key LIKE '$uname:%';")
+        db_count=$(sqlite3 $DB_FILE "SELECT COUNT(*) FROM users WHERE user_key LIKE '$safe_uname:%';")
         if [ "$db_count" -gt 0 ]; then
             echo -e "${YELLOW} Lỗi: Người dùng '$uname' ĐÃ TỒN TẠI! Không thể thêm đồng loạt để tránh trùng lặp.${NC}"
             sleep 3
             return
         fi
     else
-        db_count=$(sqlite3 $DB_FILE "SELECT COUNT(*) FROM users WHERE port=$target_port AND user_key LIKE '$uname:%';")
+        db_count=$(sqlite3 $DB_FILE "SELECT COUNT(*) FROM users WHERE port=$target_port AND user_key LIKE '$safe_uname:%';")
         if [ "$db_count" -gt 0 ]; then
             echo -e "${YELLOW} Lỗi: Người dùng '$uname' ĐÃ CÓ MẶT ở Node cổng $target_port! Thao tác bị hủy.${NC}"
             sleep 3
@@ -359,15 +376,19 @@ add_user_advanced() {
 
     # 2. ĐỒNG BỘ UUID & PASSWORD THEO CẤU TRÚC CHUẨN 5 TRƯỜNG
     # Lấy mật khẩu từ các node hỗ trợ mật khẩu (Hysteria2 hoặc TUIC) -> Trường số 3
-    upass=$(sqlite3 $DB_FILE "SELECT user_key FROM users WHERE user_key LIKE '$uname:%' AND (node_type='hysteria2' OR node_type='tuic') LIMIT 1;" | cut -d':' -f3 | tr -d '\r')
+    upass=$(sqlite3 $DB_FILE "SELECT user_key FROM users WHERE user_key LIKE '$safe_uname:%' AND (node_type='hysteria2' OR node_type='tuic') LIMIT 1;" | cut -d':' -f3 | tr -d '\r')
     if [ -n "$upass" ]; then
         echo -e " Đã tìm thấy tên User cũ, tự động dùng lại Mật khẩu: ${GREEN}$upass${NC}"
     else
-        read -p " Nhập Mật khẩu mới: " upass </dev/tty
+        # TỰ ĐỘNG TẠO MẬT KHẨU NGẪU NHIÊN 10 KÝ TỰ (Chữ cái và số)
+        upass=$(tr -dc 'a-zA-Z0-9' </dev/urandom | head -c 10)
+        echo -e " Đã tự động tạo Mật khẩu ngẫu nhiên: ${GREEN}$upass${NC}"
     fi
+    
+    safe_upass=$(echo "$upass" | sed "s/'/''/g")
 
     # Lấy UUID từ các node hỗ trợ UUID (VLESS hoặc TUIC) -> Trường số 2
-    uuid_gen=$(sqlite3 $DB_FILE "SELECT user_key FROM users WHERE user_key LIKE '$uname:%' AND (node_type='vless' OR node_type='tuic') LIMIT 1;" | cut -d':' -f2 | tr -d '\r')
+    uuid_gen=$(sqlite3 $DB_FILE "SELECT user_key FROM users WHERE user_key LIKE '$safe_uname:%' AND (node_type='vless' OR node_type='tuic') LIMIT 1;" | cut -d':' -f2 | tr -d '\r')
     if [ -n "$uuid_gen" ]; then
         echo -e " Đã tìm thấy tên User cũ, tự động đồng bộ UUID: ${GREEN}$uuid_gen${NC}"
     else
@@ -384,23 +405,25 @@ add_user_advanced() {
             type=$(jq -r ".inbounds[] | select(.listen_port == $p) | .type" $CONFIG_FILE)
             dom=$(sqlite3 $DB_FILE "SELECT domain FROM users WHERE port=$p LIMIT 1;")
             if [ -z "$dom" ]; then dom=$(get_ip); fi
+            safe_dom=$(echo "$dom" | sed "s/'/''/g")
             
             if [ "$type" == "hysteria2" ]; then
-                jq "(.inbounds[] | select(.listen_port == $p).users) += [{\"name\": \"$uname\", \"password\": \"$upass\"}]" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
-                sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('hysteria2', $p, '$dom', '$uname::$upass::');"
+                jq "(.inbounds[] | select(.listen_port == $p).users) += [{\"name\": \"$uname\", \"password\": \"$upass\"}]" $CONFIG_FILE > tmp.json && [ -s tmp.json ] && mv tmp.json $CONFIG_FILE || rm -f tmp.json
+                sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('hysteria2', $p, '$safe_dom', '$safe_uname::$safe_upass::');"
                 success_count=$((success_count + 1))
             elif [ "$type" == "tuic" ]; then
-                jq "(.inbounds[] | select(.listen_port == $p).users) += [{\"uuid\": \"$uuid_gen\", \"password\": \"$upass\"}]" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
-                sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('tuic', $p, '$dom', '$uname:$uuid_gen:$upass::');"
+                jq "(.inbounds[] | select(.listen_port == $p).users) += [{\"uuid\": \"$uuid_gen\", \"password\": \"$upass\"}]" $CONFIG_FILE > tmp.json && [ -s tmp.json ] && mv tmp.json $CONFIG_FILE || rm -f tmp.json
+                sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('tuic', $p, '$safe_dom', '$safe_uname:$uuid_gen:$safe_upass::');"
                 success_count=$((success_count + 1))
             elif [ "$type" == "vless" ]; then
                 sni=$(jq -r ".inbounds[] | select(.listen_port == $p).tls.server_name" $CONFIG_FILE)
+                safe_sni=$(echo "$sni" | sed "s/'/''/g")
                 # Lấy Public Key của node VLESS này (Trường số 4)
                 pub_k=$(sqlite3 $DB_FILE "SELECT user_key FROM users WHERE port=$p AND node_type='vless' LIMIT 1;" | cut -d':' -f4 | tr -d '\r')
                 if [ -z "$pub_k" ]; then pub_k="reused_key"; fi
                 
-                jq "(.inbounds[] | select(.listen_port == $p).users) += [{\"uuid\": \"$uuid_gen\", \"name\": \"$uname\"}]" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
-                sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('vless', $p, '$dom', '$uname:$uuid_gen::$pub_k:$sni');"
+                jq "(.inbounds[] | select(.listen_port == $p).users) += [{\"uuid\": \"$uuid_gen\", \"name\": \"$uname\"}]" $CONFIG_FILE > tmp.json && [ -s tmp.json ] && mv tmp.json $CONFIG_FILE || rm -f tmp.json
+                sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('vless', $p, '$safe_dom', '$safe_uname:$uuid_gen::$pub_k:$safe_sni');"
                 success_count=$((success_count + 1))
             fi
         done
@@ -418,20 +441,22 @@ add_user_advanced() {
         else
             dom=$(sqlite3 $DB_FILE "SELECT domain FROM users WHERE port=$target_port LIMIT 1;")
             if [ -z "$dom" ]; then dom=$(get_ip); fi
+            safe_dom=$(echo "$dom" | sed "s/'/''/g")
             
             if [ "$type" == "hysteria2" ]; then
-                jq "(.inbounds[] | select(.listen_port == $target_port).users) += [{\"name\": \"$uname\", \"password\": \"$upass\"}]" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
-                sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('hysteria2', $target_port, '$dom', '$uname::$upass::');"
+                jq "(.inbounds[] | select(.listen_port == $target_port).users) += [{\"name\": \"$uname\", \"password\": \"$upass\"}]" $CONFIG_FILE > tmp.json && [ -s tmp.json ] && mv tmp.json $CONFIG_FILE || rm -f tmp.json
+                sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('hysteria2', $target_port, '$safe_dom', '$safe_uname::$safe_upass::');"
             elif [ "$type" == "tuic" ]; then
-                jq "(.inbounds[] | select(.listen_port == $target_port).users) += [{\"uuid\": \"$uuid_gen\", \"password\": \"$upass\"}]" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
-                sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('tuic', $target_port, '$dom', '$uname:$uuid_gen:$upass::');"
+                jq "(.inbounds[] | select(.listen_port == $target_port).users) += [{\"uuid\": \"$uuid_gen\", \"password\": \"$upass\"}]" $CONFIG_FILE > tmp.json && [ -s tmp.json ] && mv tmp.json $CONFIG_FILE || rm -f tmp.json
+                sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('tuic', $target_port, '$safe_dom', '$safe_uname:$uuid_gen:$safe_upass::');"
             elif [ "$type" == "vless" ]; then
                 sni=$(jq -r ".inbounds[] | select(.listen_port == $target_port).tls.server_name" $CONFIG_FILE)
+                safe_sni=$(echo "$sni" | sed "s/'/''/g")
                 pub_k=$(sqlite3 $DB_FILE "SELECT user_key FROM users WHERE port=$target_port AND node_type='vless' LIMIT 1;" | cut -d':' -f4 | tr -d '\r')
                 if [ -z "$pub_k" ]; then pub_k="reused_key"; fi
                 
-                jq "(.inbounds[] | select(.listen_port == $target_port).users) += [{\"uuid\": \"$uuid_gen\", \"name\": \"$uname\"}]" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
-                sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('vless', $target_port, '$dom', '$uname:$uuid_gen::$pub_k:$sni');"
+                jq "(.inbounds[] | select(.listen_port == $target_port).users) += [{\"uuid\": \"$uuid_gen\", \"name\": \"$uname\"}]" $CONFIG_FILE > tmp.json && [ -s tmp.json ] && mv tmp.json $CONFIG_FILE || rm -f tmp.json
+                sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('vless', $target_port, '$safe_dom', '$safe_uname:$uuid_gen::$pub_k:$safe_sni');"
             fi
             echo -e "${GREEN} Đã thêm User [${uname}] vào cổng [$target_port] thành công!${NC}"
         fi
@@ -633,7 +658,7 @@ update_node_config() {
         echo -e "--> Đang cập nhật cổng và định dạng lại tag tự động trong file cấu hình json..."
         node_type=$(jq -r ".inbounds[] | select(.listen_port == $old_port) | .type" $CONFIG_FILE)
         new_tag="${node_type}-$new_port"
-        jq "(.inbounds[] | select(.listen_port == $old_port)) |= (.listen_port = $new_port | .tag = \"$new_tag\")" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
+        jq "(.inbounds[] | select(.listen_port == $old_port)) |= (.listen_port = $new_port | .tag = \"$new_tag\")" $CONFIG_FILE > tmp.json && [ -s tmp.json ] && mv tmp.json $CONFIG_FILE || rm -f tmp.json
         
         echo -e "--> Đang đồng bộ hóa Database..."
         sqlite3 $DB_FILE "UPDATE users SET port=$new_port WHERE port=$old_port;"
@@ -657,8 +682,11 @@ update_node_config() {
             return
         fi
         
+        # Làm sạch Domain trước khi lưu vào DB
+        safe_new_dom=$(echo "$new_dom" | sed "s/'/''/g")
+        
         echo -e "--> Đang cập nhật thông tin Domain mới vào hệ thống Database..."
-        sqlite3 $DB_FILE "UPDATE users SET domain='$new_dom' WHERE port=$old_port;"
+        sqlite3 $DB_FILE "UPDATE users SET domain='$safe_new_dom' WHERE port=$old_port;"
         
         echo -e "${GREEN} Cập nhật Domain kết nối cho Node cổng $old_port thành công!${NC}"
         sleep 3
@@ -671,8 +699,11 @@ update_node_config() {
             return
         fi
         
+        # Làm sạch Tag (chống nhập nháy kép làm gãy lệnh jq)
+        safe_new_tag=$(echo "$new_tag" | sed 's/"/\\"/g')
+        
         # Kiểm tra chống trùng lặp tên Tag trong tệp cấu hình JSON
-        tag_check=$(jq -r ".inbounds[] | select(.tag == \"$new_tag\") | .tag" $CONFIG_FILE 2>/dev/null)
+        tag_check=$(jq -r ".inbounds[] | select(.tag == \"$safe_new_tag\") | .tag" $CONFIG_FILE 2>/dev/null)
         if [ -n "$tag_check" ] && [ "$tag_check" != "null" ]; then
             echo -e "${RED} Lỗi: Tên Tag MỚI [$new_tag] đã tồn tại ở một Node khác!${NC}"
             sleep 3
@@ -680,7 +711,7 @@ update_node_config() {
         fi
         
         echo -e "--> Đang cập nhật cấu trúc tên Tag trong file cấu hình json..."
-        jq "(.inbounds[] | select(.listen_port == $old_port)).tag = \"$new_tag\"" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
+        jq "(.inbounds[] | select(.listen_port == $old_port)).tag = \"$safe_new_tag\"" $CONFIG_FILE > tmp.json && [ -s tmp.json ] && mv tmp.json $CONFIG_FILE || rm -f tmp.json
         
         systemctl restart sing-box
         echo -e "${GREEN} Cập nhật Tên Tag cho Node cổng $old_port thành [$new_tag] thành công!${NC}"
@@ -846,7 +877,7 @@ main_menu() {
         4) add_single_node_menu ;;
         5)
             read -p "Nhập số Cổng (Port) của node muốn xóa: " del_port </dev/tty
-            jq "del(.inbounds[] | select(.listen_port == $del_port))" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
+            jq "del(.inbounds[] | select(.listen_port == $del_port))" $CONFIG_FILE > tmp.json && [ -s tmp.json ] && mv tmp.json $CONFIG_FILE || rm -f tmp.json
             ufw delete allow $del_port/udp &>/dev/null; sqlite3 $DB_FILE "DELETE FROM users WHERE port=$del_port;"
             systemctl restart sing-box; echo -e "${GREEN}--> Đã dọn sạch cổng $del_port!${NC}"; sleep 3 ;;
         6) update_node_config ;;
@@ -880,7 +911,7 @@ main_menu() {
                     
                     if [ -z "$port" ]; then
                         # Dọn dẹp an toàn trên file config.json
-                        jq "(.inbounds[] | select(has(\"users\")).users) |= map(select((.name // \"\") != \"$target_del\" and (.uuid // \"\") != \"$target_uuid\"))" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
+                        jq "(.inbounds[] | select(has(\"users\")).users) |= map(select((.name // \"\") != \"$target_del\" and (.uuid // \"\") != \"$target_uuid\"))" $CONFIG_FILE > tmp.json && [ -s tmp.json ] && mv tmp.json $CONFIG_FILE || rm -f tmp.json
                         
                         # Xóa toàn bộ dữ liệu của User này trong DB cực kỳ gọn gàng
                         sqlite3 $DB_FILE "DELETE FROM users WHERE user_key LIKE '$target_del:%';"
@@ -890,7 +921,7 @@ main_menu() {
                         sleep 3
                     else
                         # Dọn dẹp trên file config.json theo Port chỉ định
-                        jq "(.inbounds[] | select(.listen_port == $port and has(\"users\")).users) |= map(select((.name // \"\") != \"$target_del\" and (.uuid // \"\") != \"$target_uuid\"))" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
+                        jq "(.inbounds[] | select(.listen_port == $port and has(\"users\")).users) |= map(select((.name // \"\") != \"$target_del\" and (.uuid // \"\") != \"$target_uuid\"))" $CONFIG_FILE > tmp.json && [ -s tmp.json ] && mv tmp.json $CONFIG_FILE || rm -f tmp.json
                         
                         # Xóa trong DB theo Port
                         sqlite3 $DB_FILE "DELETE FROM users WHERE port=$port AND user_key LIKE '$target_del:%';"
@@ -903,16 +934,6 @@ main_menu() {
                     set -e 
                 fi
             fi
-            ;;
-        7) 
-            systemctl start sing-box
-            echo -e "${GREEN} Đã BẬT dịch vụ Sing-box!${NC}"
-            sleep 3 
-            ;;
-        8) 
-            systemctl stop sing-box
-            echo -e "${YELLOW} Đã DỪNG dịch vụ Sing-box!${NC}"
-            sleep 3 
             ;;
         9) create_swap ;;
         10) issue_cloudflare_cert ;;

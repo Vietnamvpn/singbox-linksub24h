@@ -479,16 +479,32 @@ main_menu() {
             systemctl restart sing-box; echo -e "${GREEN}--> Đã dọn sạch cổng $del_port!${NC}"; sleep 2 ;;
         5) add_user_advanced ;;
         6)
-            read -p "Nhập Cổng (Port) của Node: " port </dev/tty
-            type=$(jq -r ".inbounds[] | select(.listen_port == $port) | .type" $CONFIG_FILE)
-            read -p "Nhập chính xác Tên User hoặc mã UUID: " target_del </dev/tty
-            if [ "$type" == "hysteria2" ] || [ "$type" == "vless" ]; then
-                jq "(.inbounds[] | select(.listen_port == $port).users) |= map(select(.name != \"$target_del\" and .uuid != \"$target_del\"))" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
-            elif [ "$type" == "tuic" ]; then
-                jq "(.inbounds[] | select(.listen_port == $port).users) |= map(select(.uuid != \"$target_del\"))" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
+            clear
+            echo -e "${BLUE}=========================================${NC}"
+            echo -e "${BLUE}         XÓA NGƯỜI DÙNG KHỎI NODE        ${NC}"
+            echo -e "${BLUE}=========================================${NC}"
+            read -p "👉 Nhập Cổng (Port) của Node (Để TRỐNG để xóa User khỏi TẤT CẢ các Node): " port </dev/tty
+            read -p "👉 Nhập chính xác Tên User hoặc mã UUID cần xóa: " target_del </dev/tty
+            
+            if [ -z "$target_del" ]; then
+                echo -e "${RED}Tên User/UUID không được để trống!${NC}"
+                sleep 2
+            elif [ -z "$port" ]; then
+                # Xóa khỏi toàn bộ Node
+                jq "(.inbounds[] | select(has(\"users\")).users) |= map(select(.name != \"$target_del\" and .uuid != \"$target_del\"))" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
+                sqlite3 $DB_FILE "DELETE FROM users WHERE user_key LIKE '$target_del:%' OR user_key LIKE '%:$target_del:%';"
+                systemctl restart sing-box
+                echo -e "${GREEN}✅ Đã dọn sạch User [$target_del] khỏi TOÀN BỘ các Node!${NC}"
+                sleep 2
+            else
+                # Xóa khỏi 1 Node cụ thể
+                jq "(.inbounds[] | select(.listen_port == $port and has(\"users\")).users) |= map(select(.name != \"$target_del\" and .uuid != \"$target_del\"))" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
+                sqlite3 $DB_FILE "DELETE FROM users WHERE port=$port AND (user_key LIKE '$target_del:%' OR user_key LIKE '%:$target_del:%');"
+                systemctl restart sing-box
+                echo -e "${GREEN}✅ Đã xóa User [$target_del] khỏi cổng $port!${NC}"
+                sleep 2
             fi
-            sqlite3 $DB_FILE "DELETE FROM users WHERE port=$port AND user_key LIKE '$target_del:%';"
-            systemctl restart sing-box; echo -e "${GREEN}Đã thực thi xóa.${NC}"; sleep 2 ;;
+            ;;
         7) 
             systemctl start sing-box
             echo -e "${GREEN}✅ Đã BẬT dịch vụ Sing-box!${NC}"

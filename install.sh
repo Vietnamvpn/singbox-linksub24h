@@ -560,15 +560,29 @@ create_swap() {
     sleep 3
 }
 
-# --- TÍNH NĂNG MỚI: CẬP NHẬT ĐỔI CỔNG HOẶC DOMAIN CHO NODE ---
+# --- CẬP NHẬT CẤU HÌNH NODE PROXY (ĐÃ THÊM HỦY VÀ ĐỔI TAG) ---
 update_node_config() {
     clear
     echo -e "${BLUE}=========================================${NC}"
     echo -e "${BLUE}     CẬP NHẬT CẤU HÌNH NODE PROXY        ${NC}"
     echo -e "${BLUE}=========================================${NC}"
-    read -p " Nhập cổng (Port) hiện tại của Node cần sửa: " old_port </dev/tty
-    if [ -z "$old_port" ]; then return; fi
+    echo -e " ${YELLOW}(Bạn có thể nhập 0 hoặc n để hủy bỏ và quay lại Menu)${NC}"
+    echo -e "----------------------------------------"
     
+    read -p " Nhập cổng (Port) hiện tại của Node cần sửa: " old_port </dev/tty
+    if [ -z "$old_port" ] || [ "$old_port" == "0" ] || [ "$old_port" == "n" ] || [ "$old_port" == "N" ]; then
+        echo -e "${YELLOW} Đã hủy thao tác cập nhật Node.${NC}"
+        sleep 2
+        return
+    fi
+    
+    # Kiểm tra tính hợp lệ của cổng đầu vào tránh lỗi cú pháp lệnh jq
+    if [[ ! "$old_port" =~ ^[0-9]+$ ]]; then
+        echo -e "${RED} Lỗi: Cổng phải là một số nguyên hợp lệ!${NC}"
+        sleep 3
+        return
+    fi
+
     node_exists=$(jq -r ".inbounds[] | select(.listen_port == $old_port) | .listen_port" $CONFIG_FILE 2>/dev/null)
     if [ -z "$node_exists" ] || [ "$node_exists" == "null" ]; then
         echo -e "${RED} Lỗi: Không tìm thấy Node nào đang chạy ở cổng $old_port!${NC}"
@@ -576,13 +590,34 @@ update_node_config() {
         return
     fi
     
-    echo "1. Đổi Cổng (Port) mới cho Node này"
-    echo "2. Đổi Domain/IP kết nối mới cho Node này"
-    read -p "Chọn mục cần cập nhật (1-2): " update_choice </dev/tty
+    # Lấy thông tin Tag hiện tại hiển thị để người dùng dễ theo dõi
+    current_tag=$(jq -r ".inbounds[] | select(.listen_port == $old_port) | .tag" $CONFIG_FILE 2>/dev/null)
+    echo -e " Node đang chọn có Tag hiện tại là: ${GREEN}$current_tag${NC}"
+    echo -e "----------------------------------------"
+    echo " 1. Đổi Cổng (Port) mới cho Node này"
+    echo " 2. Đổi Domain/IP kết nối mới cho Node này"
+    echo " 3. Đổi Tên nhận diện (Tag) mới cho Node này"
+    read -p " Chọn mục cần cập nhật (1-3): " update_choice </dev/tty
+    
+    if [ -z "$update_choice" ] || [ "$update_choice" == "0" ] || [ "$update_choice" == "n" ] || [ "$update_choice" == "N" ]; then
+        echo -e "${YELLOW} Đã hủy thao tác cập nhật Node.${NC}"
+        sleep 2
+        return
+    fi
     
     if [ "$update_choice" == "1" ]; then
         read -p " Nhập Cổng (Port) MỚI muốn thay đổi: " new_port </dev/tty
-        if [ -z "$new_port" ]; then return; fi
+        if [ -z "$new_port" ] || [ "$new_port" == "0" ] || [ "$new_port" == "n" ] || [ "$new_port" == "N" ]; then
+            echo -e "${YELLOW} Đã hủy thao tác.${NC}"
+            sleep 2
+            return
+        fi
+        
+        if [[ ! "$new_port" =~ ^[0-9]+$ ]]; then
+            echo -e "${RED} Lỗi: Cổng phải là một số nguyên hợp lệ!${NC}"
+            sleep 3
+            return
+        fi
         
         port_check=$(jq -r ".inbounds[] | select(.listen_port == $new_port) | .listen_port" $CONFIG_FILE 2>/dev/null)
         if [ -n "$port_check" ] && [ "$port_check" != "null" ]; then
@@ -591,7 +626,7 @@ update_node_config() {
             return
         fi
         
-        echo -e "--> Đang cập nhật cổng trong file cấu hình json..."
+        echo -e "--> Đang cập nhật cổng và định dạng lại tag tự động trong file cấu hình json..."
         node_type=$(jq -r ".inbounds[] | select(.listen_port == $old_port) | .type" $CONFIG_FILE)
         new_tag="${node_type}-$new_port"
         jq "(.inbounds[] | select(.listen_port == $old_port)) |= (.listen_port = $new_port | .tag = \"$new_tag\")" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
@@ -612,15 +647,42 @@ update_node_config() {
         
     elif [ "$update_choice" == "2" ]; then
         read -p " Nhập Domain hoặc IP kết nối MỚI: " new_dom </dev/tty
-        if [ -z "$new_dom" ]; then return; fi
+        if [ -z "$new_dom" ] || [ "$new_dom" == "0" ] || [ "$new_dom" == "n" ] || [ "$new_dom" == "N" ]; then
+            echo -e "${YELLOW} Đã hủy thao tác.${NC}"
+            sleep 2
+            return
+        fi
         
         echo -e "--> Đang cập nhật thông tin Domain mới vào hệ thống Database..."
         sqlite3 $DB_FILE "UPDATE users SET domain='$new_dom' WHERE port=$old_port;"
         
         echo -e "${GREEN} Cập nhật Domain kết nối cho Node cổng $old_port thành công!${NC}"
         sleep 3
+        
+    elif [ "$update_choice" == "3" ]; then
+        read -p " Nhập Tên nhận diện (Tag) MỚI cho Node này: " new_tag </dev/tty
+        if [ -z "$new_tag" ] || [ "$new_tag" == "0" ] || [ "$new_tag" == "n" ] || [ "$new_tag" == "N" ]; then
+            echo -e "${YELLOW} Đã hủy thao tác.${NC}"
+            sleep 2
+            return
+        fi
+        
+        # Kiểm tra chống trùng lặp tên Tag trong tệp cấu hình JSON
+        tag_check=$(jq -r ".inbounds[] | select(.tag == \"$new_tag\") | .tag" $CONFIG_FILE 2>/dev/null)
+        if [ -n "$tag_check" ] && [ "$tag_check" != "null" ]; then
+            echo -e "${RED} Lỗi: Tên Tag MỚI [$new_tag] đã tồn tại ở một Node khác!${NC}"
+            sleep 3
+            return
+        fi
+        
+        echo -e "--> Đang cập nhật cấu trúc tên Tag trong file cấu hình json..."
+        jq "(.inbounds[] | select(.listen_port == $old_port)).tag = \"$new_tag\"" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
+        
+        systemctl restart sing-box
+        echo -e "${GREEN} Cập nhật Tên Tag cho Node cổng $old_port thành [$new_tag] thành công!${NC}"
+        sleep 3
     else
-        echo -e "${RED}Lựa chọn sai định dạng!${NC}"
+        echo -e "${RED} Lựa chọn sai định dạng!${NC}"
         sleep 2
     fi
 }

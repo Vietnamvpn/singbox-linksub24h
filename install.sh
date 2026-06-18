@@ -783,6 +783,69 @@ issue_cloudflare_cert() {
     sleep 5
 }
 
+# --- TÍNH NĂNG MỚI: TẠM KHÓA / MỞ KHÓA USER ---
+toggle_user_status() {
+    clear
+    echo -e "${BLUE}=========================================${NC}"
+    echo -e "${BLUE}      TẠM KHÓA / MỞ KHÓA MẠNG NGƯỜI DÙNG ${NC}"
+    echo -e "${BLUE}=========================================${NC}"
+    read -p " Nhập chính xác Tên User cần xử lý: " target_user </dev/tty
+    
+    if [ -z "$target_user" ]; then
+        echo -e "${RED} Tên User không được để trống!${NC}"; sleep 2; return
+    fi
+
+    # Kiểm tra xem User có tồn tại trong DB không
+    db_check=$(sqlite3 $DB_FILE "SELECT COUNT(*) FROM users WHERE user_key LIKE '$target_user:%';")
+    if [ "$db_check" -eq 0 ]; then
+        echo -e "${RED} Lỗi: Không tìm thấy người dùng [$target_user] trong Database!${NC}"; sleep 3; return
+    fi
+
+    # Lấy UUID của user (dành cho VLESS/TUIC)
+    target_uuid=$(sqlite3 $DB_FILE "SELECT user_key FROM users WHERE user_key LIKE '$target_user:%' AND node_type IN ('tuic', 'vless') LIMIT 1;" | cut -d':' -f2 | tr -d '\r')
+    if [ -z "$target_uuid" ]; then target_uuid="NO_UUID_FOUND"; fi
+
+    # Kiểm tra xem user có đang nằm trong config.json (đang có mạng) không
+    is_active=$(jq "[.inbounds[] | select(has(\"users\")).users[]? | select((.name // \"\") == \"$target_user\" or (.uuid // \"\") == \"$target_uuid\")] | length" $CONFIG_FILE)
+
+    if [ "$is_active" -gt 0 ]; then
+        # === TRƯỜNG HỢP 1: ĐANG CÓ MẠNG -> TIẾN HÀNH KHÓA (CẮT MẠNG) ===
+        echo -e "--> Đang tiến hành ${RED}TẠM KHÓA${NC} mạng của [$target_user]..."
+        
+        # Chỉ xóa khỏi config.json, GIỮ NGUYÊN trong SQLite DB
+        jq "(.inbounds[] | select(has(\"users\")).users) |= map(select((.name // \"\") != \"$target_user\" and (.uuid // \"\") != \"$target_uuid\"))" $CONFIG_FILE > tmp.json && [ -s tmp.json ] && mv tmp.json $CONFIG_FILE || rm -f tmp.json
+        
+        systemctl restart sing-box
+        echo -e "${GREEN} Đã cắt mạng User [$target_user] thành công! (Dữ liệu vẫn được bảo lưu)${NC}"
+        sleep 3
+    else
+        # === TRƯỜNG HỢP 2: ĐANG BỊ KHÓA -> TIẾN HÀNH MỞ LẠI MẠNG ===
+        echo -e "--> Đang tiến hành ${GREEN}MỞ LẠI${NC} mạng cho [$target_user]..."
+        
+        # Đọc dữ liệu gốc từ DB và khôi phục vào config.json
+        sqlite3 $DB_FILE "SELECT node_type, port, user_key FROM users WHERE user_key LIKE '$target_user:%';" | while read -r row; do
+            ntype=$(echo "$row" | cut -d'|' -f1)
+            port=$(echo "$row" | cut -d'|' -f2)
+            ukey=$(echo "$row" | cut -d'|' -f3)
+            
+            uuid=$(echo "$ukey" | cut -d':' -f2)
+            upass=$(echo "$ukey" | cut -d':' -f3)
+            
+            if [ "$ntype" == "hysteria2" ]; then
+                jq "(.inbounds[] | select(.listen_port == $port).users) += [{\"name\": \"$target_user\", \"password\": \"$upass\"}]" $CONFIG_FILE > tmp.json && [ -s tmp.json ] && mv tmp.json $CONFIG_FILE || rm -f tmp.json
+            elif [ "$ntype" == "tuic" ]; then
+                jq "(.inbounds[] | select(.listen_port == $port).users) += [{\"uuid\": \"$uuid\", \"password\": \"$upass\"}]" $CONFIG_FILE > tmp.json && [ -s tmp.json ] && mv tmp.json $CONFIG_FILE || rm -f tmp.json
+            elif [ "$ntype" == "vless" ]; then
+                jq "(.inbounds[] | select(.listen_port == $port).users) += [{\"uuid\": \"$uuid\", \"name\": \"$target_user\"}]" $CONFIG_FILE > tmp.json && [ -s tmp.json ] && mv tmp.json $CONFIG_FILE || rm -f tmp.json
+            fi
+        done
+        
+        systemctl restart sing-box
+        echo -e "${GREEN} Đã khôi phục mạng cho User [$target_user] thành công!${NC}"
+        sleep 3
+    fi
+}
+
 main_menu() {
     clear
     echo -e "${BLUE}=========================================${NC}"
@@ -807,6 +870,7 @@ main_menu() {
     echo -e " 13. Khởi động lại"
     echo -e " 14. Gỡ cài đặt, Xóa sạch tàn dư"
     echo -e " 15. Cập nhật Tool (Từ Github)"
+    echo -e " 16. Tạm khóa / Mở khóa mạng User"
     echo -e "----------------------------------------"
     echo -e " 0. Thoát hệ thống"
     echo -e "${BLUE}=========================================${NC}"
@@ -958,6 +1022,7 @@ main_menu() {
         15)
             update_script
             ;;
+        16) toggle_user_status ;;
         0) exit 0 ;;
         *) ;;
     esac

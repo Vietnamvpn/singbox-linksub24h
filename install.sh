@@ -271,7 +271,7 @@ add_single_node_menu() {
     
     systemctl restart sing-box
     echo -e "${GREEN}✅ Thêm Node độc lập hoàn tất! Không ảnh hưởng tới các Node cũ.${NC}"
-    sleep 2
+    sleep 3
 }
 # --- THÊM NGƯỜI DÙNG MỚI VÀO NODE ---
 add_user_advanced() {
@@ -284,7 +284,7 @@ add_user_advanced() {
     read -p "👤 Nhập tên User: " uname </dev/tty
     if [ -z "$uname" ]; then
         echo -e "${RED}❌ Lỗi: Tên User không được để trống! Thao tác bị hủy.${NC}"
-        sleep 2
+        sleep 3
         return
     fi
 
@@ -293,14 +293,14 @@ add_user_advanced() {
         db_count=$(sqlite3 $DB_FILE "SELECT COUNT(*) FROM users WHERE user_key LIKE '$uname:%';")
         if [ "$db_count" -gt 0 ]; then
             echo -e "${YELLOW}⚠️ Lỗi: Người dùng '$uname' ĐÃ TỒN TẠI! Không thể thêm đồng loạt để tránh trùng lặp.${NC}"
-            sleep 2
+            sleep 3
             return
         fi
     else
         db_count=$(sqlite3 $DB_FILE "SELECT COUNT(*) FROM users WHERE port=$target_port AND user_key LIKE '$uname:%';")
         if [ "$db_count" -gt 0 ]; then
             echo -e "${YELLOW}⚠️ Lỗi: Người dùng '$uname' ĐÃ CÓ MẶT ở Node cổng $target_port! Thao tác bị hủy.${NC}"
-            sleep 2
+            sleep 3
             return
         fi
     fi
@@ -391,7 +391,7 @@ add_user_advanced() {
     fi
     
     set -e 
-    systemctl restart sing-box; sleep 2
+    systemctl restart sing-box; sleep 3
 }
 # --- HÀM GỠ CÀI ĐẶT TOÀN BỘ ---
 uninstall_system() {
@@ -432,7 +432,7 @@ uninstall_system() {
         exit 0
     else
         echo -e "${GREEN}Đã hủy thao tác gỡ cài đặt.${NC}"
-        sleep 2
+        sleep 3
     fi
 }
 
@@ -453,7 +453,7 @@ update_script() {
         chmod +x $SCRIPT_PATH
         echo -e "${GREEN}✅ Đã cập nhật Tool thành công!${NC}"
         echo -e "--> Đang khởi động lại giao diện mới..."
-        sleep 2
+        sleep 3
         # Tự động thay thế tiến trình hiện tại bằng script mới
         exec $SCRIPT_PATH
     else
@@ -579,7 +579,7 @@ main_menu() {
             read -p "Nhập số Cổng (Port) của node muốn xóa: " del_port </dev/tty
             jq "del(.inbounds[] | select(.listen_port == $del_port))" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
             ufw delete allow $del_port/udp &>/dev/null; sqlite3 $DB_FILE "DELETE FROM users WHERE port=$del_port;"
-            systemctl restart sing-box; echo -e "${GREEN}--> Đã dọn sạch cổng $del_port!${NC}"; sleep 2 ;;
+            systemctl restart sing-box; echo -e "${GREEN}--> Đã dọn sạch cổng $del_port!${NC}"; sleep 3 ;;
         5) add_user_advanced ;;
         6)
             clear
@@ -590,7 +590,7 @@ main_menu() {
             
             if [ -z "$target_del" ]; then
                 echo -e "${RED}❌ Tên User không được để trống!${NC}"
-                sleep 2
+                sleep 3
             else
                 read -p "👉 Nhập Cổng (Port) (Để TRỐNG nếu muốn xóa User này khỏi TẤT CẢ các Node): " port </dev/tty
                 
@@ -604,13 +604,13 @@ main_menu() {
                     sqlite3 $DB_FILE "DELETE FROM users WHERE user_key LIKE '$target_del:%' OR user_key LIKE '%:$target_uuid:%' OR user_key LIKE '$target_uuid:%';"
                     systemctl restart sing-box
                     echo -e "${GREEN}✅ Đã dọn sạch User [$target_del] khỏi TOÀN BỘ các Node!${NC}"
-                    sleep 2
+                    sleep 3
                 else
                     jq "(.inbounds[] | select(.listen_port == $port and has(\"users\")).users) |= map(select((.name // \"\") != \"$target_del\" and (.uuid // \"\") != \"$target_del\" and (.uuid // \"\") != \"$target_uuid\"))" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
                     sqlite3 $DB_FILE "DELETE FROM users WHERE port=$port AND (user_key LIKE '$target_del:%' OR user_key LIKE '%:$target_uuid:%' OR user_key LIKE '$target_uuid:%');"
                     systemctl restart sing-box
                     echo -e "${GREEN}✅ Đã xóa User [$target_del] khỏi cổng $port!${NC}"
-                    sleep 2
+                    sleep 3
                 fi
                 
                 set -e 
@@ -619,17 +619,17 @@ main_menu() {
         7) 
             systemctl start sing-box
             echo -e "${GREEN}✅ Đã BẬT dịch vụ Sing-box!${NC}"
-            sleep 2 
+            sleep 3 
             ;;
         8) 
             systemctl stop sing-box
             echo -e "${YELLOW}⚠️ Đã DỪNG dịch vụ Sing-box!${NC}"
-            sleep 2 
+            sleep 3 
             ;;
         9) 
             systemctl restart sing-box
             echo -e "${GREEN}✅ Đã KHỞI ĐỘNG LẠI dịch vụ Sing-box thành công!${NC}"
-            sleep 2 
+            sleep 3 
             ;;
         10) 
             uninstall_system 

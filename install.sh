@@ -347,7 +347,7 @@ add_user_advanced() {
     echo -e "${BLUE}=========================================${NC}"
     read -p " Nhập cổng Node muốn thêm, để trống sẽ thêm vào tất cả các Node: " target_port </dev/tty
     
-    read -p " Nhập tên User: " uname </dev/tty
+    read -p " Nhập tên User viết liền không dấu: " uname </dev/tty
     if [ -z "$uname" ]; then
         echo -e "${RED} Lỗi: Tên User không được để trống! Thao tác bị hủy.${NC}"
         sleep 3

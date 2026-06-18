@@ -508,6 +508,165 @@ update_script() {
     fi
 }
 
+# --- TÍNH NĂNG MỚI: XEM TRẠNG THÁI VPS ---
+view_vps_status() {
+    clear
+    echo -e "${BLUE}=========================================${NC}"
+    echo -e "${BLUE}           TRẠNG THÁI HỆ THỐNG VPS       ${NC}"
+    echo -e "${BLUE}=========================================${NC}"
+    echo -e " Thời gian hoạt động (Uptime): $(uptime -p)"
+    echo -e " Mức tải hệ thống (Load Avg) : $(uptime | awk -F'load average:' '{print $2}')"
+    echo -e "----------------------------------------"
+    echo -e " Sử dụng Bộ nhớ (RAM):"
+    free -h
+    echo -e "----------------------------------------"
+    echo -e " Tình trạng Ổ đĩa (Disk Space):"
+    df -h /
+    echo -e "----------------------------------------"
+    echo -e " Trạng thái kết nối mạng (Port đang mở):"
+    ss -tuln | grep -E 'Listen|ESTAB' | head -n 15
+    echo -e "----------------------------------------"
+    read -p "Nhấn Enter để quay lại..." dummy </dev/tty
+}
+
+# --- TÍNH NĂNG MỚI: TẠO BỘ NHỚ ẢO (SWAP) ---
+create_swap() {
+    clear
+    echo -e "${BLUE}=========================================${NC}"
+    echo -e "${BLUE}         CẤU HÌNH BỘ NHỚ ẢO (SWAP)        ${NC}"
+    echo -e "${BLUE}=========================================${NC}"
+    echo -e " Trạng thái SWAP hiện tại hệ thống:"
+    swapon --show
+    echo -e "----------------------------------------"
+    read -p " Nhập dung lượng SWAP muốn tạo (Ví dụ: 1 hoặc 2 tương ứng 1GB/2GB, hoặc 0 để hủy): " swap_size </dev/tty
+    if [ "$swap_size" == "0" ] || [ -z "$swap_size" ]; then
+        echo -e "${YELLOW} Đã hủy thao tác cấu hình SWAP.${NC}"
+        sleep 2
+        return
+    fi
+    
+    echo -e "--> Đang khởi tạo tệp bộ nhớ ảo SWAP ${swap_size}GB (Vui lòng chờ)..."
+    swapoff -a &>/dev/null
+    rm -f /swapfile
+    dd if=/dev/zero of=/swapfile bs=1M count=$((swap_size * 1024)) status=progress
+    chmod 600 /swapfile
+    mkswap /swapfile
+    swapon /swapfile
+    
+    if ! grep -q "/swapfile" /etc/fstab; then
+        echo "/swapfile swap swap defaults 0 0" >> /etc/fstab
+    fi
+    echo -e "${GREEN} Tạo dung lượng ảo SWAP ${swap_size}GB thành công!${NC}"
+    sleep 3
+}
+
+# --- TÍNH NĂNG MỚI: CẬP NHẬT ĐỔI CỔNG HOẶC DOMAIN CHO NODE ---
+update_node_config() {
+    clear
+    echo -e "${BLUE}=========================================${NC}"
+    echo -e "${BLUE}     CẬP NHẬT CẤU HÌNH NODE PROXY        ${NC}"
+    echo -e "${BLUE}=========================================${NC}"
+    read -p " Nhập cổng (Port) hiện tại của Node cần sửa: " old_port </dev/tty
+    if [ -z "$old_port" ]; then return; fi
+    
+    node_exists=$(jq -r ".inbounds[] | select(.listen_port == $old_port) | .listen_port" $CONFIG_FILE 2>/dev/null)
+    if [ -z "$node_exists" ] || [ "$node_exists" == "null" ]; then
+        echo -e "${RED} Lỗi: Không tìm thấy Node nào đang chạy ở cổng $old_port!${NC}"
+        sleep 3
+        return
+    fi
+    
+    echo "1. Đổi Cổng (Port) mới cho Node này"
+    echo "2. Đổi Domain/IP kết nối mới cho Node này"
+    read -p "Chọn mục cần cập nhật (1-2): " update_choice </dev/tty
+    
+    if [ "$update_choice" == "1" ]; then
+        read -p " Nhập Cổng (Port) MỚI muốn thay đổi: " new_port </dev/tty
+        if [ -z "$new_port" ]; then return; fi
+        
+        port_check=$(jq -r ".inbounds[] | select(.listen_port == $new_port) | .listen_port" $CONFIG_FILE 2>/dev/null)
+        if [ -n "$port_check" ] && [ "$port_check" != "null" ]; then
+            echo -e "${RED} Lỗi: Cổng MỚI $new_port đã bị chiếm dụng bởi Node khác!${NC}"
+            sleep 3
+            return
+        fi
+        
+        echo -e "--> Đang cập nhật cổng trong file cấu hình json..."
+        node_type=$(jq -r ".inbounds[] | select(.listen_port == $old_port) | .type" $CONFIG_FILE)
+        new_tag="${node_type}-$new_port"
+        jq "(.inbounds[] | select(.listen_port == $old_port)) |= (.listen_port = $new_port | .tag = \"$new_tag\")" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
+        
+        echo -e "--> Đang đồng bộ hóa Database..."
+        sqlite3 $DB_FILE "UPDATE users SET port=$new_port WHERE port=$old_port;"
+        
+        echo -e "--> Đang cập nhật lại quy tắc Tường lửa UFW..."
+        ufw allow $new_port/tcp &>/dev/null
+        ufw allow $new_port/udp &>/dev/null
+        ufw delete allow $old_port/tcp &>/dev/null
+        ufw delete allow $old_port/udp &>/dev/null
+        ufw reload &>/dev/null
+        
+        systemctl restart sing-box
+        echo -e "${GREEN} Cập nhật chuyển đổi cổng từ $old_port sang $new_port thành công!${NC}"
+        sleep 3
+        
+    elif [ "$update_choice" == "2" ]; then
+        read -p " Nhập Domain hoặc IP kết nối MỚI: " new_dom </dev/tty
+        if [ -z "$new_dom" ]; then return; fi
+        
+        echo -e "--> Đang cập nhật thông tin Domain mới vào hệ thống Database..."
+        sqlite3 $DB_FILE "UPDATE users SET domain='$new_dom' WHERE port=$old_port;"
+        
+        echo -e "${GREEN} Cập nhật Domain kết nối cho Node cổng $old_port thành công!${NC}"
+        sleep 3
+    else
+        echo -e "${RED}Lựa chọn sai định dạng!${NC}"
+        sleep 2
+    fi
+}
+
+# --- TÍNH NĂNG MỚI: XIN CHỨNG CHỈ SSL CLOUDFLARE ---
+issue_cloudflare_cert() {
+    clear
+    echo -e "${BLUE}=========================================${NC}"
+    echo -e "${BLUE}       XIN CHỨNG CHỈ SSL CLOUDFLARE      ${NC}"
+    echo -e "${BLUE}=========================================${NC}"
+    echo -e "Yêu cầu: Domain đã trỏ về VPS và bạn có tài khoản Cloudflare."
+    read -p " Nhập Domain cần cấp SSL (Ví dụ: sub.domain.com): " cf_domain </dev/tty
+    if [ -z "$cf_domain" ]; then return; fi
+    
+    read -p " Nhập Email tài khoản Cloudflare của bạn: " cf_email </dev/tty
+    read -p " Nhập Global API Key của Cloudflare: " cf_key </dev/tty
+    if [ -z "$cf_email" ] || [ -z "$cf_key" ]; then
+        echo -e "${RED} Lỗi: Email và Global API Key không được để trống!${NC}"
+        sleep 3
+        return
+    fi
+    
+    echo -e "--> Đang thiết lập công cụ acme.sh..."
+    if [ ! -f ~/.acme.sh/acme.sh ]; then
+        curl https://get.acme.sh | sh -s email=$cf_email &>/dev/null
+    fi
+    
+    export CF_Key="$cf_key"
+    export CF_Email="$cf_email"
+    
+    echo -e "--> Đang tiến hành xác thực và xin chứng chỉ từ Cloudflare..."
+    ~/.acme.sh/acme.sh --issue --dns dns_cf -d "$cf_domain" --keylength ec-256 --force
+    
+    if [ $? -eq 0 ]; then
+        echo -e "--> Đang xuất chứng chỉ vào thư mục lưu trữ lõi..."
+        ~/.acme.sh/acme.sh --install-cert -d "$cf_domain" --ecc \
+            --key-file "$CONFIG_DIR/private.key" \
+            --fullchain-file "$CONFIG_DIR/cert.pem" \
+            --reloadcmd "systemctl restart sing-box"
+        echo -e "${GREEN} Xin cấp chứng chỉ SSL Cloudflare thành công! Đã tự động áp dụng.${NC}"
+    else
+        echo -e "${RED} Xin cấp chứng chỉ thất bại! Vui lòng kiểm tra lại thông tin API hoặc trạng thái DNS.${NC}"
+    fi
+    sleep 5
+}
+
 main_menu() {
     clear
     echo -e "${BLUE}=========================================${NC}"
@@ -515,18 +674,23 @@ main_menu() {
     echo -e "${BLUE}=========================================${NC}"
     echo -e " 1. Xem danh sách & Xuất Link kết nối User"
     echo -e " 2. Xem LOG theo dõi kết nối trực tiếp"
+    echo -e " 3. Xem trạng thái hệ thống VPS"
     echo -e "----------------------------------------"
-    echo -e " 3. Thêm một Node độc lập mới"
-    echo -e " 4. Xóa bỏ một Node (Đóng cổng)"
+    echo -e " 4. Thêm một Node độc lập mới"
+    echo -e " 5. Xóa bỏ một Node (Đóng cổng)"
+    echo -e " 6. Cập nhật Đổi cổng hoặc Domain cho Node"
     echo -e "----------------------------------------"
-    echo -e " 5. Thêm người dùng (Đơn lẻ / Toàn bộ)"
-    echo -e " 6. Xóa bỏ người dùng khỏi Node"
+    echo -e " 7. Thêm người dùng (Đơn lẻ / Toàn bộ)"
+    echo -e " 8. Xóa bỏ người dùng khỏi Node"
     echo -e "----------------------------------------"
-    echo -e " 7. Bắt đầu (Start) Sing-box"
-    echo -e " 8. Dừng (Stop) Sing-box"
-    echo -e " 9. Khởi động lại (Restart)"
-    echo -e " 10. Gỡ cài đặt (Xóa sạch tàn dư)"
-    echo -e " 11. Cập nhật Tool (Từ Github)"
+    echo -e " 9. Tạo bộ nhớ ảo (SWAP)"
+    echo -e " 10. Xin chứng chỉ SSL Cloudflare"
+    echo -e "----------------------------------------"
+    echo -e " 11. Bắt đầu (Start) Sing-box"
+    echo -e " 12. Dừng (Stop) Sing-box"
+    echo -e " 13. Khởi động lại (Restart)"
+    echo -e " 14. Gỡ cài đặt (Xóa sạch tàn dư)"
+    echo -e " 15. Cập nhật Tool (Từ Github)"
     echo -e "----------------------------------------"
     echo -e " 0. Thoát hệ thống"
     echo -e "${BLUE}=========================================${NC}"
@@ -586,7 +750,7 @@ main_menu() {
                             echo " - [Hysteria2] hysteria2://$pass@$dom:$port?insecure=1&sni=$sni#Hy2-$u_name"
                         elif [ "$type" == "tuic" ]; then
                             pass=$(echo "$user_obj" | jq -r '.password')
-                            echo " - [TUIC v5]   tuic://$u_uuid:$pass@$dom:$port?congestion_control=bbr&udp_relay_mode=native&alpn=h3&sni=$sni&allow_insecure=1#TUIC-${u_uuid:0:8}"
+                            echo " - [TUIC v5]   tuic://$u_uuid:$pass@$dom:$port?congestion_control=bbr&udp_relay_mode=native&alpn=h3&sni=$sni&allow_insecure=1#TUIC-${t_uuid:0:8}"
                         elif [ "$type" == "vless" ]; then
                             pub_k=$(sqlite3 $DB_FILE "SELECT user_key FROM users WHERE port=$port AND user_key LIKE '$u_name:%';" | cut -d':' -f3)
                             echo " - [VLESS]     vless://$u_uuid@$dom:$port?security=reality&encryption=none&pbk=$pub_k&headerType=none&fp=chrome&spx=%2F&type=grpc&sni=$sni&serviceName=vless-grpc&sid=0123456789abcdef#VLESS-$u_name"
@@ -618,14 +782,16 @@ main_menu() {
             echo -e "\n======================================================="
             read -p "Nhấn Enter để quay lại..." dummy </dev/tty ;;
         2) journalctl -u sing-box --no-hostname -n 50 -f ;;
-        3) add_single_node_menu ;;
-        4)
+        3) view_vps_status ;;
+        4) add_single_node_menu ;;
+        5)
             read -p "Nhập số Cổng (Port) của node muốn xóa: " del_port </dev/tty
             jq "del(.inbounds[] | select(.listen_port == $del_port))" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
             ufw delete allow $del_port/udp &>/dev/null; sqlite3 $DB_FILE "DELETE FROM users WHERE port=$del_port;"
             systemctl restart sing-box; echo -e "${GREEN}--> Đã dọn sạch cổng $del_port!${NC}"; sleep 3 ;;
-        5) add_user_advanced ;;
-        6)
+        6) update_node_config ;;
+        7) add_user_advanced ;;
+        8)
             clear
             echo -e "${BLUE}=========================================${NC}"
             echo -e "${BLUE}         XÓA NGƯỜI DÙNG KHỎI NODE        ${NC}"
@@ -670,15 +836,27 @@ main_menu() {
             echo -e "${YELLOW} Đã DỪNG dịch vụ Sing-box!${NC}"
             sleep 3 
             ;;
-        9) 
+        9) create_swap ;;
+        10) issue_cloudflare_cert ;;
+        11) 
+            systemctl start sing-box
+            echo -e "${GREEN} Đã BẬT dịch vụ Sing-box!${NC}"
+            sleep 3 
+            ;;
+        12) 
+            systemctl stop sing-box
+            echo -e "${YELLOW} Đã DỪNG dịch vụ Sing-box!${NC}"
+            sleep 3 
+            ;;
+        13) 
             systemctl restart sing-box
             echo -e "${GREEN} Đã KHỞI ĐỘNG LẠI dịch vụ Sing-box thành công!${NC}"
             sleep 3 
             ;;
-        10) 
+        14) 
             uninstall_system 
             ;;
-        11)
+        15)
             update_script
             ;;
         0) exit 0 ;;

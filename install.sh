@@ -258,9 +258,12 @@ add_single_node_menu() {
         sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('tuic', $port, '$dom', '$uuid_gen:$upass');"
     elif [ "$proto" == "vless" ]; then
         /usr/local/bin/sing-box generate reality-keypair > /tmp/kp.txt 2>/dev/null || true
-        priv_key=$(grep "Private key:" /tmp/kp.txt | awk '{print $3}')
-        pub_key=$(grep "Public key:" /tmp/kp.txt | awk '{print $3}')
-        if [ -z "$priv_key" ]; then priv_key="eK3_Ag3X_Placeholder"; pub_key="pub_placeholder"; fi
+        priv_key=$(awk '/[Pp]rivate/ {print $NF}' /tmp/kp.txt | tr -d '\r')
+        pub_key=$(awk '/[Pp]ublic/ {print $NF}' /tmp/kp.txt | tr -d '\r')
+        if [ -z "$priv_key" ]; then 
+            priv_key="mK3_Ag3X_Placeholder_Must_Be_43_Chars_Long"
+            pub_key="pub_placeholder"
+        fi
         rm -f /tmp/kp.txt
         jq ".inbounds += [{\"type\": \"vless\", \"tag\": \"vless-$port\", \"listen\": \"::\", \"listen_port\": $port, \"users\": [{\"uuid\": \"$uuid_gen\", \"name\": \"$uname\"}], \"tls\": {\"enabled\": true, \"server_name\": \"$sni\", \"reality\": {\"enabled\": true, \"handshake\": {\"server\": \"$sni\", \"server_port\": 443}, \"private_key\": \"$priv_key\", \"short_id\": [\"0123456789abcdef\"]}}, \"transport\": {\"type\": \"grpc\", \"service_name\": \"vless-grpc\"}}]" $CONFIG_FILE > tmp.json && mv tmp.json $CONFIG_FILE
         sqlite3 $DB_FILE "INSERT INTO users (node_type, port, domain, user_key) VALUES ('vless', $port, '$dom', '$uname:$uuid_gen:$pub_key:$sni');"

@@ -560,8 +560,8 @@ uninstall_system() {
     echo -e " - Xóa cả script menu tool này."
     echo -e "----------------------------------------"
     read -p "Bạn có CHẮC CHẮN muốn dọn sạch mọi thứ không? (y/n): " confirm </dev/tty
-    
     if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+    set +e
         echo -e "\n${YELLOW}--> Đang dừng và gỡ bỏ Service...${NC}"
         systemctl stop sing-box log-forwarder &>/dev/null
         systemctl disable sing-box log-forwarder &>/dev/null

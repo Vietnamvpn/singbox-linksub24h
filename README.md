@@ -11,11 +11,10 @@
 
 ## 🚀 II. HƯỚNG DẪN CÀI ĐẶT LẦN ĐẦU (INITIAL SETUP)
 
-**Bước 1: Chạy file cài đặt**
-Bạn cấp quyền thực thi và chạy file script:
+**Bước 1: Chạy lệnh cài đặt**
+Copy dòng lệnh dưới đây và dán vào Terminal (SSH) của VPS:
 ```bash
-chmod +x install.sh
-./install.sh
+curl -sSL [https://raw.githubusercontent.com/Vietnamvpn/singbox-linksub24h/refs/heads/main/install.sh](https://raw.githubusercontent.com/Vietnamvpn/singbox-linksub24h/refs/heads/main/install.sh) | bash
 ```
 
 **Bước 2: Xác nhận thông tin hệ thống**

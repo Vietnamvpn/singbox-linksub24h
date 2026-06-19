@@ -14,7 +14,7 @@
 **Bước 1: Chạy lệnh cài đặt**
 Copy dòng lệnh dưới đây và dán vào Terminal (SSH) của VPS:
 ```bash
-curl -sSL [https://raw.githubusercontent.com/Vietnamvpn/singbox-linksub24h/refs/heads/main/install.sh](https://raw.githubusercontent.com/Vietnamvpn/singbox-linksub24h/refs/heads/main/install.sh) | bash
+curl -sSL https://raw.githubusercontent.com/Vietnamvpn/singbox-linksub24h/refs/heads/main/install.sh | bash
 ```
 
 **Bước 2: Xác nhận thông tin hệ thống**

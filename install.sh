@@ -1037,33 +1037,21 @@ config_webhook() {
 
 main_menu() {
     clear
-    echo -e "${BLUE}=========================================${NC}"
-    echo -e "${BLUE}    MENU QUẢN LÝ SING-BOX PROXY TOOL V3  ${NC}"
-    echo -e "${BLUE}=========================================${NC}"
-    echo -e " 1. Xem danh sách & Xuất Link kết nối User"
-    echo -e " 2. Xem LOG theo dõi kết nối trực tiếp"
-    echo -e " 3. Xem trạng thái hệ thống VPS"
-    echo -e "----------------------------------------"
-    echo -e " 4. Thêm một Node độc lập mới"
-    echo -e " 5. Xóa bỏ một Node (Đóng cổng)"
-    echo -e " 6. Cập nhật Đổi cổng hoặc Domain cho Node"
-    echo -e "----------------------------------------"
-    echo -e " 7. Thêm người dùng"
-    echo -e " 8. Xóa bỏ người dùng khỏi Node"
-    echo -e "----------------------------------------"
-    echo -e " 9. Tạo bộ nhớ ảo (SWAP)"
-    echo -e " 10. Xin chứng chỉ SSL Cloudflare"
-    echo -e "----------------------------------------"
-    echo -e " 11. Bắt đầu Sing-box"
-    echo -e " 12. Dừng Sing-box"
-    echo -e " 13. Khởi động lại"
-    echo -e " 14. Gỡ cài đặt, Xóa sạch tàn dư"
-    echo -e " 15. Cập nhật Tool (Từ Github)"
-    echo -e " 16. Tạm khóa / Mở khóa mạng User"
-    echo -e " 17. Cấu hình Webhook"
-    echo -e "----------------------------------------"
-    echo -e " 0. Thoát hệ thống"
-    echo -e "${BLUE}=========================================${NC}"
+    echo -e "${BLUE}===============================================================================${NC}"
+    echo -e "${BLUE}                       MENU QUẢN LÝ SING-BOX PROXY TOOL V3                     ${NC}"
+    echo -e "${BLUE}===============================================================================${NC}"
+    echo -e " 1. Xem danh sách & Xuất Link kết nối User | 10. Xin chứng chỉ SSL Cloudflare"
+    echo -e " 2. Xem LOG theo dõi kết nối trực tiếp     | 11. Bắt đầu Sing-box"
+    echo -e " 3. Xem trạng thái hệ thống VPS            | 12. Dừng Sing-box"
+    echo -e "-------------------------------------------------------------------------------"
+    echo -e " 4. Thêm một Node độc lập mới              | 13. Khởi động lại"
+    echo -e " 5. Xóa bỏ một Node (Đóng cổng)            | 14. Gỡ cài đặt, Xóa sạch tàn dư"
+    echo -e " 6. Cập nhật Đổi cổng hoặc Domain cho Node | 15. Cập nhật Tool (Từ Github)"
+    echo -e "-------------------------------------------------------------------------------"
+    echo -e " 7. Thêm người dùng                        | 16. Tạm khóa / Mở khóa mạng User"
+    echo -e " 8. Xóa bỏ người dùng khỏi Node            | 17. Cấu hình Webhook"
+    echo -e " 9. Tạo bộ nhớ ảo (SWAP)                   |  0. Thoát hệ thống"
+    echo -e "${BLUE}===============================================================================${NC}"
     
     # Lấy trạng thái hiện tại của Sing-box để hiển thị
     if systemctl is-active --quiet sing-box; then
@@ -1071,7 +1059,7 @@ main_menu() {
     else
         echo -e "Trạng thái: ${RED}Đã dừng (Inactive)${NC}"
     fi
-    echo -e "----------------------------------------"
+    echo -e "-------------------------------------------------------------------------------"
     
     read -p "Nhập lựa chọn: " m_choice </dev/tty
     
@@ -1237,5 +1225,4 @@ main_menu() {
     esac
     main_menu
 }
-
 if [ -f "$SCRIPT_PATH" ]; then main_menu; else check_and_update_system; fi

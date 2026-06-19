@@ -11,7 +11,7 @@ NC='\033[0m'
 CONFIG_DIR="/usr/local/etc/sing-box"
 CONFIG_FILE="$CONFIG_DIR/config.json"
 DB_FILE="$CONFIG_DIR/proxy_data.db"
-SCRIPT_PATH="/usr/local/bin/box-tool"
+SCRIPT_PATH="/usr/local/bin/sbls"
 GITHUB_RAW_URL="https://raw.githubusercontent.com/Vietnamvpn/singbox-linksub24h/refs/heads/main/install.sh"
 
 set -e
